@@ -61,3 +61,7 @@ pytest                        # all tests are offline
 All public, read-only, keyless: OKX market data, yfinance, and Swissquote's public quote feed (gold
 spot cross-check). Binance and Bybit are blocked from the author's location. `tools/verify.py`
 rebuilds 4H bars from 15M/5M data to check the pipeline.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
