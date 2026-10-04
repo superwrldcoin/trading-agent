@@ -1,12 +1,17 @@
 # User Preferences
 
-Only preferences the user has stated directly. Do not infer. Unfilled fields mean "unknown, ask."
+Only preferences the user has stated directly. Do not infer. Fields marked **unknown** mean ask.
 
 ## Watchlist (added: 2026-10-04)
 - XAU/USD (spot gold)
 - MSFT (Microsoft)
 - SI (silver)
 - BCH/USDT (Bitcoin Cash)
+
+Market files also exist for BTC and GLD (`memory/markets/`). Whether they belong on the watchlist: **unknown**.
+
+## Typical leverage
+- **unknown**. Not stated yet. Also unknown: equity, risk % per trade, exchange/broker, fees, margin mode (isolated or cross), instrument type per asset (spot, futures, ETF, CFD). Until these are known, sizing and leverage checks are skipped (AGENT.md F1).
 
 ## Timeframe (added: 2026-10-04)
 - Primary: **4H**. Structure, zones, and invalidation are judged on 4H candle closes.
@@ -19,24 +24,35 @@ Only preferences the user has stated directly. Do not infer. Unfilled fields mea
 - Look for sweeps and retests of those levels, demand/supply shelves, and range or base structure.
 - Invalidation = a clean 4H close beyond the structural level, not a wick.
 
-## Report format: "4H Execution Matrix" (added: 2026-10-04)
-One block per instrument:
-
-```
-<INSTRUMENT> (<name>)
-Market Structure: <one-line read of 4H structure>
-Current Price: <fetched price, with as-of time>
-Execution Zone: <low> - <high> (<which reference level / confluence>)
-Structural Invalidation (Stop): <level> (<4H close condition>)
-Target 1 (De-Risk NN%): <level> (<reference level>)
-Target 2 (Expansion NN%): <level> (<reference level>)
-Target 3 (Runner NN%): <level> (<reference level>)   # optional
-```
-
+## Report format (added: 2026-10-04)
+- The **4H Execution Matrix** is the core of each instrument section, laid out as a **milestone table**: every level sorted by price, with distance, R multiple, scale %, reference level, and a tag. The full layout is in `skills/report-format.md`.
+- Matrix fields:
+  ```
+  <INSTRUMENT> (<name>)
+  Market Structure: <one-line read of 4H structure>
+  Current Price: <fetched price, with as-of time>
+  Execution Zone: <low> - <high> (<which reference level / confluence>)
+  Structural Invalidation (Stop): <level> (<4H close condition>)
+  Target 1 (De-Risk NN%): <level> (<reference level>)
+  Target 2 (Expansion NN%): <level> (<reference level>)
+  Target 3 (Runner NN%): <level> (<reference level>)   # optional
+  ```
+- Tag every number and claim: `[DATA]`, `[CALC]`, `[JUDGMENT]`.
+- Disclaimer **once**, at the end of the report.
 - Scale-out split used so far: 40 / 40 / 20 for three targets, 50 / 50 for two.
 - Every level must tie to a named reference (PDH, PWL, etc.) computed from fetched data.
 
+## How the user wants things done (stated corrections and choices)
+- The agent is **analysis-only**: it never places trades and never requests or stores API keys or seed phrases. (added: 2026-10-04)
+- **The user applies MEMORY_UPDATE blocks after review.** The agent proposes; it doesn't apply them. (added: 2026-10-04)
+- The milestone-table/matrix format **replaced** the earlier observations/scenarios report format (user chose "option 1"). (added: 2026-10-04)
+- **Substitute data sources are OK** when the exact market isn't available, as long as the substitution is disclosed (e.g. XAUT for spot gold, SI=F for silver). (added: 2026-10-04)
+- Asked for 4H findings to be **verified against 15M and 5M bars** (done via `tools/verify.py` in the 2026-10-04 session). Whether this should run every session: **unknown**. (added: 2026-10-04)
+- When inputs are missing, follow the **fallback rules** in AGENT.md (F1–F6) instead of guessing. (added: 2026-10-04)
+- News searches are allowed, but each one asks the user first (settings). (added: 2026-10-04)
+- The repo is **public** (github.com/superwrldcoin/trading-agent). User-supplied chart snapshots are not committed. (added: 2026-10-04)
+
 ## Not yet specified
-- Risk tolerance / max position size: _TBD_
-- Minimum reward:risk to show a setup: _TBD_
-- Report length / detail beyond the matrix: _TBD_
+- Risk tolerance / max position size: **unknown**
+- Minimum reward:risk to show a setup: **unknown** (skills use a 2.0 default, tagged `[ASSUMPTION]`)
+- Report length / detail beyond the matrix: **unknown**
