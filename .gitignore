@@ -4,7 +4,6 @@ __pycache__/
 .pytest_cache/
 .env
 
-# generated analysis output (keep folder + user-supplied snapshots)
+# generated analysis output (keep folder only)
 tools/output/*
 !tools/output/.gitkeep
-!tools/output/*_user-*.md
