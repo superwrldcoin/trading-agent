@@ -1,6 +1,6 @@
 # Memory Protocol (DRAFT)
 
-Rules for what the agent may write to `memory/` and how. The agent never edits memory files freely. It proposes changes as `MEMORY_UPDATE` blocks, and only changes that follow this protocol get applied.
+Rules for what goes into `memory/` and how. The agent never edits memory files itself. It proposes changes as `MEMORY_UPDATE` blocks at the end of its report. **The user reviews each block and applies, edits, or rejects it.** Only blocks that follow this protocol are eligible.
 
 ## Files
 
@@ -84,6 +84,5 @@ Promotion is a `MEMORY_UPDATE` with `action: add` on `playbook.md` that cites th
 
 ## Open questions
 
-- Who applies MEMORY_UPDATE blocks: the agent automatically, or the user after review?
 - Trade ID scheme and where closed trades are recorded (e.g. `memory/trades.md` or a CSV in `tools/output/`).
 - Should retired playbook entries move to an archive file?

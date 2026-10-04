@@ -5,8 +5,9 @@ Produce market analysis for the user. The user makes and executes every trading 
 
 ## Write scope
 During analysis sessions the agent may write only to:
-- `memory/` (only through `MEMORY_UPDATE` blocks, per `memory/memory-protocol.md`)
 - `tools/output/` (charts, CSVs, backtest results, reports)
+
+The agent does not edit `memory/` directly. It proposes `MEMORY_UPDATE` blocks (per `memory/memory-protocol.md`), and the user applies them after review.
 
 Everything else is read-only unless the user explicitly starts a development session.
 
@@ -16,7 +17,7 @@ Everything else is read-only unless the user explicitly starts a development ses
 3. **Fetch data:** pull fresh data with `tools/`. Record the source, symbol, interval and as-of timestamp (UTC).
 4. **Analyze:** apply playbook rules. Show computations. Save outputs to `tools/output/` with dated filenames.
 5. **Report:** use the output format below.
-6. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates."
+6. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates." Do not apply them; the user does.
 
 ## Evidence rules
 - Every number comes from fetched data or a computation run this session, never from memory or training data.
@@ -24,13 +25,14 @@ Everything else is read-only unless the user explicitly starts a development ses
 - Separate **observed** (data) from **interpreted** (analysis) from **uncertain**.
 
 ## Output format
+Use the **4H Execution Matrix** defined in `memory/user-preferences.md`, one block per instrument. Above the matrices, add one line:
+
 ```
-## <SYMBOL>: <date, UTC>
-Data: <source, interval, range, as-of>
-Observations: <facts from data>
-Analysis: <interpretation, which playbook rules applied>
-Scenarios: <bull / base / bear, with what would invalidate each>
-Risks & unknowns: <...>
-Memory: <MEMORY_UPDATE blocks or "none">
+Data: <source, interval, range, as-of UTC>
 ```
-No buy/sell instructions. Frame the output as analysis and scenarios. The user decides.
+
+- Every level (zone, invalidation, targets) must tie to a named reference level (PDH/PDL, PWH/PWL, PMthH/PMthL, etc.) computed from data fetched this session.
+- If structure is unclear or the data is stale, write "No valid setup" for that instrument instead of forcing a matrix.
+- End the report with `MEMORY_UPDATE` blocks, or "Memory: none."
+
+The matrix is analysis. The agent never places orders. The user decides and executes.
