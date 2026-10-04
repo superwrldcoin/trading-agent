@@ -35,6 +35,7 @@ ALIASES = [  # longest / most specific first
     (r"\bbitcoin\b|\bbtc\b|\bxbt\b", "BTC/USDT"),
     (r"\bxau\s*/?\s*usd\b|\bxau\b|\bgold\b|\bspot\s*gold\b", "XAU/USD"),
     (r"\bgld\b", "GLD"),
+    (r"\bslv\b", "SLV"),
     (r"\bsilver\b|\bxag\s*/?\s*usd\b|\bxag\b|\bsi\b", "SI"),
     (r"\bmsft\b|\bmicrosoft\b", "MSFT"),
 ]

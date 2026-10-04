@@ -21,12 +21,11 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import levels, positions  # noqa: E402
+from tools import levels, positions, universe  # noqa: E402
 
 PREFS_PATH = ROOT / "memory" / "user-preferences.md"
 TRADES_PATH = ROOT / "memory" / "trades.md"
-THEMES = {"BTC/USDT": "crypto", "BCH/USDT": "crypto", "XAU/USD": "precious metals", "SI": "precious metals",
-          "GLD": "precious metals", "MSFT": "equities"}
+THEMES = universe.themes()  # id -> theme, from memory/universe.yaml asset_class
 
 
 def load_rules(path: Path | None = None) -> dict:

@@ -79,6 +79,43 @@ def fetch_yf_daily_close(ticker: str, period: str = "120d") -> pd.Series:
     return close.rename(ticker)
 
 
+FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
+FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
+
+
+def parse_fred_csv(text: str) -> pd.Series:
+    from io import StringIO
+    df = pd.read_csv(StringIO(text))
+    date_col, val_col = df.columns[0], df.columns[1]
+    s = pd.to_numeric(df[val_col], errors="coerce")
+    s.index = pd.DatetimeIndex(pd.to_datetime(df[date_col]), name="date")
+    return s.dropna().rename(val_col)
+
+
+def fetch_fred_series(series: str) -> pd.Series:
+    """Daily FRED series: keyless CSV first; if that fails and FRED_API_KEY is set in the environment, the official API.
+    The key is read from the environment only, never requested, stored, or printed."""
+    import os
+    try:
+        resp = requests.get(FRED_CSV_URL.format(series=series), timeout=TIMEOUT)
+        resp.raise_for_status()
+        s = parse_fred_csv(resp.text)
+        if s.empty:
+            raise RuntimeError("empty CSV")
+        return s
+    except Exception as csv_exc:
+        key = os.environ.get("FRED_API_KEY")
+        if not key:
+            raise RuntimeError(f"FRED {series} unavailable (keyless CSV failed: {csv_exc}; no FRED_API_KEY in env)")
+        resp = requests.get(FRED_API_URL, params={"series_id": series, "api_key": key, "file_type": "json"},
+                            timeout=TIMEOUT)
+        resp.raise_for_status()
+        obs = resp.json()["observations"]
+        s = pd.Series({pd.Timestamp(o["date"]): pd.to_numeric(o["value"], errors="coerce") for o in obs}).dropna()
+        s.index.name = "date"
+        return s.rename(series)
+
+
 def parse_swissquote_mid(payload: list[dict]) -> float:
     prices = payload[0]["spreadProfilePrices"][0]
     return (prices["bid"] + prices["ask"]) / 2

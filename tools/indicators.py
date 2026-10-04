@@ -21,7 +21,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import data, fetch_prices, levels  # noqa: E402
+from tools import data, fetch_prices, levels, universe  # noqa: E402
 
 CORR_WINDOW = 30
 DRIVER_PERIOD = "120d"
@@ -34,18 +34,23 @@ SETTLE_4H = 150
 SETTLE_DAILY = 60
 
 # (watchlist symbol, yfinance driver ticker, use_diff). Yields are compared by change in level, not % change.
-DRIVERS = [
-    ("XAU/USD", "DX-Y.NYB", False),
-    ("XAU/USD", "^TNX", True),
-    ("SI", "DX-Y.NYB", False),
-    ("MSFT", "^NDX", False),
-    ("MSFT", "^TNX", True),
-    ("BCH/USDT", "BTC-USD", False),
-    ("BTC/USDT", "^NDX", False),
-    ("BTC/USDT", "DX-Y.NYB", False),
-    ("GLD", "DX-Y.NYB", False),
-]
-PAIRS = [("XAU/USD", "SI"), ("XAU/USD", "GLD"), ("BCH/USDT", "BTC/USDT")]  # watchlist-to-watchlist correlations
+def correlation_specs() -> tuple[list[tuple[str, str, bool]], list[tuple[str, str]]]:
+    """From the memory/universe.yaml context map: external series (core id, symbol, use_diff) and core-to-core pairs."""
+    sym_to_id = universe.core_symbol_to_id()
+    external, internal = [], []
+    for cid in universe.core_by_id():
+        ctx = universe.context(cid)
+        for sym in list(ctx.get("drivers", [])) + list(ctx.get("pairs", [])):
+            other = sym_to_id.get(sym)
+            if other and other != cid:
+                if (other, cid) not in internal and (cid, other) not in internal:
+                    internal.append((cid, other))
+            elif not other and (cid, sym, sym in universe.LEVEL_DRIVERS) not in external:
+                external.append((cid, sym, sym in universe.LEVEL_DRIVERS))
+    return external, internal
+
+
+DRIVERS, PAIRS = correlation_specs()
 
 
 # ---------- indicators ----------
@@ -435,7 +440,11 @@ def correlation_section(daily: dict[str, pd.Series], symbols: list[str]) -> str:
             continue
         if ticker not in driver_cache:
             try:
-                driver_cache[ticker] = data.fetch_yf_daily_close(ticker, period=DRIVER_PERIOD)
+                role_entry = universe.entry(ticker)
+                if role_entry and role_entry[1].get("source") == "fred":
+                    driver_cache[ticker] = data.fetch_fred_series(role_entry[1].get("fred_series", ticker)).tail(150)
+                else:
+                    driver_cache[ticker] = data.fetch_yf_daily_close(ticker, period=DRIVER_PERIOD)
             except Exception as exc:
                 driver_cache[ticker] = exc
         drv = driver_cache[ticker]

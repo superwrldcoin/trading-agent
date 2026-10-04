@@ -47,17 +47,40 @@ class Source:
     session: Session
     drop_weekend: bool = False
     spot_check: tuple[str, str] | None = None
+    backup: "Source | None" = None
+    verified: bool = False
 
 
-WATCHLIST = {
-    "XAU/USD": Source("OKX XAUT-USDT (Tether Gold, spot proxy)", "okx", "XAUT-USDT", GOLD,
-                      drop_weekend=True, spot_check=("XAU", "USD")),
-    "MSFT": Source("yfinance MSFT (1H -> 4H, RTH)", "yfinance", "MSFT", EQUITY),
-    "SI": Source("yfinance SI=F (COMEX silver futures, 1H -> 4H)", "yfinance", "SI=F", CME),
-    "BCH/USDT": Source("OKX BCH-USDT", "okx", "BCH-USDT", CRYPTO),
-    "BTC/USDT": Source("OKX BTC-USDT", "okx", "BTC-USDT", CRYPTO),
-    "GLD": Source("yfinance GLD (SPDR Gold ETF, 1H -> 4H, RTH)", "yfinance", "GLD", EQUITY),
-}
+SESSIONS = {"crypto": CRYPTO, "gold_spot": GOLD, "cme": CME, "equity": EQUITY}
+
+
+def source_from_entry(e: dict) -> Source:
+    """Build a Source from a core entry in memory/universe.yaml."""
+    session = SESSIONS[e["session"]]
+    backup = None
+    if e.get("backup"):
+        b = e["backup"]["symbol"]
+        backup = Source(f"yfinance {b} (backup)", "yfinance", b, session)
+    if e.get("source") == "exchange_public":
+        feed = e["feed"]
+        if feed.get("venue") != "okx":
+            raise ValueError(f"{e['id']}: only OKX is supported as an exchange feed (got {feed.get('venue')})")
+        label = f"OKX {feed['instrument']}" + (" (spot proxy)" if e.get("spot_check") else "")
+        sc = e.get("spot_check")
+        return Source(label, "okx", feed["instrument"], session, drop_weekend=bool(feed.get("drop_weekend")),
+                      spot_check=(sc["base"], sc["quote"]) if sc else None, backup=backup,
+                      verified=bool(e.get("verified")))
+    rth = ", RTH" if e["session"] == "equity" else ""
+    return Source(f"yfinance {e['symbol']} (1H -> 4H{rth})", "yfinance", e["symbol"], session, backup=backup,
+                  verified=bool(e.get("verified")))
+
+
+def build_watchlist() -> dict[str, Source]:
+    from tools import universe
+    return {e["id"]: source_from_entry(e) for e in universe.core()}
+
+
+WATCHLIST = build_watchlist()  # from memory/universe.yaml; nothing hardcoded
 
 
 def resample_4h(hourly: pd.DataFrame, bar_offset: str) -> pd.DataFrame:
@@ -122,17 +145,38 @@ def history_start(now: pd.Timestamp) -> pd.Timestamp:
     return (first_of_month - pd.DateOffset(months=1)) - pd.Timedelta(days=7)
 
 
-def load_4h(src: Source, now: pd.Timestamp, start: pd.Timestamp | None = None) -> pd.DataFrame:
-    """4H candles from `start` (default: history_start(now)) to now."""
+def utc_4h(hourly: pd.DataFrame) -> pd.DataFrame:
+    """1H -> 4H on UTC boundaries (00/04/08...), for 24/7 markets fetched from yfinance."""
+    g = hourly.assign(ts=hourly.index).groupby(hourly.index.floor("4h"))
+    out = g.agg(ts=("ts", "first"), open=("open", "first"), high=("high", "max"), low=("low", "min"),
+                close=("close", "last"), volume=("volume", "sum"))
+    return out.set_index(out.index.rename("ts")).drop(columns="ts")
+
+
+def load_4h(src: Source, now: pd.Timestamp, start: pd.Timestamp | None = None, use_backup: bool = True) -> pd.DataFrame:
+    """4H candles from `start` (default: history_start(now)) to now. Falls back to src.backup if the primary fails;
+    the result's attrs["feed"] says which feed was used."""
     start = start if start is not None else history_start(now)
-    if src.provider == "okx":
-        df = data.fetch_okx_candles(src.instrument, start=start)
-    else:
-        days = min((now - start).days + 2, 729)  # yfinance caps 1H history at 730 days
-        df = resample_4h(data.fetch_yf_hourly(src.instrument, period=f"{days}d"), src.session.bar_offset)
+    try:
+        if src.provider == "okx":
+            df = data.fetch_okx_candles(src.instrument, start=start)
+        else:
+            days = min((now - start).days + 2, 729)  # yfinance caps 1H history at 730 days
+            hourly = data.fetch_yf_hourly(src.instrument, period=f"{days}d")
+            df = utc_4h(hourly) if src.session.bar_offset is None else resample_4h(hourly, src.session.bar_offset)
+        if df.empty:
+            raise RuntimeError(f"{src.label} returned no candles")
+    except Exception as exc:
+        if not (use_backup and src.backup):
+            raise
+        df = load_4h(src.backup, now, start, use_backup=False)
+        df.attrs["feed"] = f"{src.backup.label} (primary {src.label} failed: {str(exc)[:80]})"
+        return df
     if src.drop_weekend:
         df = drop_gold_weekend(df)
-    return df[df.index >= start]
+    df = df[df.index >= start]
+    df.attrs["feed"] = src.label
+    return df
 
 
 def _fmt(x: float | None) -> str:

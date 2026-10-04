@@ -103,3 +103,15 @@ def test_cli_exit_code_and_failure_message(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "| BTC/USDT | 1H |" in out and "FETCH FAILED: BTC/USDT 1W" in out
     assert fp.main(["BTC/USDT", "--tf", "1H"]) == 0
+
+
+def test_backup_feed_used_when_primary_fails(monkeypatch):
+    def fake(src, tf, start, now):
+        if src.provider == "okx":
+            raise ConnectionError("HTTP 451")
+        return frame()
+    monkeypatch.setattr(fp, "_fetch_raw", fake)
+    df = fp.get_ohlcv("BTC/USDT", "1H", bars=5, now=NOW, use_cache=False)
+    assert "yfinance BTC-USD (backup)" in df.attrs["source"] and "HTTP 451" in df.attrs["source"]
+    cached = fp.get_ohlcv("BTC/USDT", "1H", bars=5, now=NOW)
+    assert cached.attrs["cached"] and "backup" in cached.attrs["source"]

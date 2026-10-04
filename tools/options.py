@@ -32,6 +32,7 @@ RATE = 0.04
 UNDERLYING = {  # watchlist symbol -> (provider, ticker, multiplier, note)
     "MSFT": ("yfinance", "MSFT", 100, ""),
     "GLD": ("yfinance", "GLD", 100, ""),
+    "SLV": ("yfinance", "SLV", 100, ""),
     "XAU/USD": ("yfinance", "GLD", 100, "spot gold has no listed options here: GLD options used as the proxy"),
     "SI": ("yfinance", "SLV", 100, "COMEX silver options aren't available keyless: SLV (iShares Silver) options used as the proxy"),
     "BTC/USDT": ("deribit", "BTC", 1, "Deribit BTC options: premiums quoted in BTC, shown in USD; 1 contract = 1 BTC"),

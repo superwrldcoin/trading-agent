@@ -1,0 +1,295 @@
+# memory/universe.yaml
+# Single source of truth for every ticker and data feed the agent may use.
+# Edit this file to add or drop symbols; tools read it, nothing is hardcoded.
+#
+# STATUS: every entry ships with verified: false. Run the fetch tool against each
+# symbol, then set verified: true (and last_verified: YYYY-MM-DD) or add a note
+# describing the failure. Do not trust an unverified symbol for a live analysis.
+#   -> python tools/universe.py verify   (fetches every symbol and writes the result back here)
+#
+# Roles:
+#   core    = instruments you trade and analyze directly
+#   driver  = macro/regime variables that influence your core assets
+#   pair    = same-theme instruments that confirm or contradict a core move
+#
+# Sources: yfinance | fred | exchange_public | coingecko | manual
+# Note: the starter set is 18 slots. Silver has two instruments (SI=F futures and
+# SLV ETF), so the file has 19 entries. Spot gold (XAU/USD) was added back to core
+# on 2026-10-04 at the user's request, so there are 20.
+#
+# Agent fields added to core entries (2026-10-04):
+#   id       = name the tools and reports use (e.g. "BTC/USDT")
+#   session  = crypto | gold_spot | cme | equity  (day/week boundaries and 4H bin anchors)
+#   feed     = primary price feed for levels and candles; backup = used if the primary fails
+#   Crypto stays on OKX (USDT pairs, native 4H, matched the user's charts); yfinance is the backup.
+
+meta:
+  version: 1
+  timeframes: ["15m", "1h", "4h", "1D", "1W"]
+  resample_4h_from_1h: true        # yfinance has no native 4h; build it from 1h
+  timestamp_all_pulls: true        # every datapoint carries UTC time + source
+  correlation_windows_days: [30, 90]
+  correlations_are_not_permanent: true   # always report rolling values, never assume
+  yfinance_unofficial: true        # can break or lag; keep user-supplied-numbers fallback live
+  futures_roll_caveat: true        # =F symbols are continuous contracts; flag roll gaps
+
+# ---------------------------------------------------------------------------
+# CORE (6 instruments, 7 entries counting both silver instruments)
+# ---------------------------------------------------------------------------
+core:
+  - symbol: "BTC-USD"
+    id: "BTC/USDT"
+    name: Bitcoin
+    asset_class: crypto
+    session: crypto
+    source: exchange_public
+    feed: {venue: okx, instrument: "BTC-USDT"}
+    backup: {source: yfinance, symbol: "BTC-USD"}
+    refresh_minutes: 5
+    pairs_with: ["ETH-USD", "IBIT"]
+    drivers: ["DX-Y.NYB", "^VIX", "QQQ"]
+    extra_feeds: [funding_rate, open_interest, long_short_ratio, btc_dominance]
+    notes: "Often trades as high-beta tech. Check QQQ and DXY before trusting a BTC-only read."
+    verified: false
+
+  - symbol: "BCH-USD"
+    id: "BCH/USDT"
+    name: Bitcoin Cash
+    asset_class: crypto
+    session: crypto
+    source: exchange_public
+    feed: {venue: okx, instrument: "BCH-USDT"}
+    backup: {source: yfinance, symbol: "BCH-USD"}
+    refresh_minutes: 5
+    pairs_with: ["BTC-USD"]          # use the BCH/BTC ratio for relative strength
+    drivers: ["DX-Y.NYB", "^VIX"]
+    extra_feeds: [funding_rate, open_interest, btc_dominance]
+    notes: "Usually a beta play on BTC. Ratio BCH/BTC shows whether the move is BCH-specific."
+    verified: false
+
+  - symbol: "XAU/USD"
+    id: "XAU/USD"
+    name: Spot gold (via OKX Tether Gold proxy)
+    asset_class: metals
+    session: gold_spot
+    source: exchange_public
+    feed: {venue: okx, instrument: "XAUT-USDT", drop_weekend: true}
+    spot_check: {venue: swissquote, base: "XAU", quote: "USD"}
+    backup: {source: yfinance, symbol: "GC=F"}   # futures: trades above spot (about $22 on 2026-10-04)
+    refresh_minutes: 5
+    pairs_with: ["GLD", "GC=F", "SI=F"]
+    drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
+    notes: "Spot proxy: XAUT can trade at a small premium/discount; Swissquote spot cross-check warns above 0.2%. XAUT volume is token volume."
+    verified: false
+
+  - symbol: "SI=F"
+    id: "SI"
+    name: Silver futures (spot-like reference)
+    asset_class: metals
+    session: cme
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["GC=F", "SIL", "HG=F"]
+    drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
+    notes: "Industrial plus monetary demand. Gap risk over weekends and session breaks."
+    verified: false
+
+  - symbol: "SLV"
+    id: "SLV"
+    name: iShares Silver Trust (ETF)
+    asset_class: metals
+    session: equity
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["SI=F", "SIL"]
+    drivers: ["DX-Y.NYB", "DFII10"]
+    notes: "Use for flow and volume context; use SI=F for price levels."
+    verified: false
+
+  - symbol: "GLD"
+    id: "GLD"
+    name: SPDR Gold Shares (ETF)
+    asset_class: metals
+    session: equity
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["GC=F", "GDX"]
+    drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
+    notes: "Real yields are often the cleaner driver than nominal yields."
+    verified: false
+
+  - symbol: "MSFT"
+    id: "MSFT"
+    name: Microsoft
+    asset_class: equity
+    session: equity
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["QQQ", "XLK", "NVDA"]
+    drivers: ["^TNX", "^VIX", "QQQ"]
+    notes: "Check earnings date and peer earnings (NVDA, AMZN, GOOGL) before any position review."
+    verified: false
+
+# ---------------------------------------------------------------------------
+# DRIVERS (5): explain why your positions move
+# ---------------------------------------------------------------------------
+drivers:
+  - symbol: "DX-Y.NYB"
+    name: US Dollar Index
+    source: yfinance
+    refresh_minutes: 15
+    influences: ["SI=F", "SLV", "GLD", "BTC-USD", "BCH-USD"]
+    expected_relation: "Strong dollar tends to pressure metals and crypto (verify with rolling correlation)"
+    verified: false
+
+  - symbol: "^TNX"
+    name: US 10-year Treasury yield
+    source: yfinance
+    refresh_minutes: 15
+    influences: ["GLD", "SI=F", "MSFT"]
+    expected_relation: "Rising yields tend to hurt non-yielding assets and growth stocks"
+    notes: "Yahoo quotes this as yield x10 on some feeds; confirm units before use."
+    verified: false
+
+  - symbol: "^VIX"
+    name: CBOE Volatility Index
+    source: yfinance
+    refresh_minutes: 15
+    influences: ["BTC-USD", "BCH-USD", "MSFT"]
+    expected_relation: "Risk-off regime detection; spikes often coincide with leveraged-asset drawdowns"
+    verified: false
+
+  - symbol: "QQQ"
+    name: Invesco Nasdaq-100 ETF
+    source: yfinance
+    refresh_minutes: 5
+    influences: ["MSFT", "BTC-USD"]
+    expected_relation: "Tech risk appetite; BTC often correlates with it, strength varies over time"
+    verified: false
+
+  - symbol: "DFII10"
+    name: 10-year real yield (TIPS)
+    source: fred
+    fred_series: DFII10
+    refresh_minutes: 1440            # daily series
+    influences: ["GLD", "SI=F", "SLV"]
+    expected_relation: "Falling real yields tend to support gold and silver"
+    notes: "Try the keyless FRED CSV endpoint first. If it fails, read FRED_API_KEY from env. If neither works, report unavailable."
+    verified: false
+
+# ---------------------------------------------------------------------------
+# PAIRS (8): confirm or contradict a core move
+# ---------------------------------------------------------------------------
+pairs:
+  - symbol: "ETH-USD"
+    name: Ethereum
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["BTC-USD"]
+    purpose: "Shows whether a move is crypto-wide or BTC-only; feeds the ETH/BTC ratio"
+    verified: false
+
+  - symbol: "IBIT"
+    name: iShares Bitcoin Trust (spot BTC ETF)
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["BTC-USD"]
+    purpose: "US-hours price action and institutional flow proxy"
+    verified: false
+
+  - symbol: "GC=F"
+    name: Gold futures
+    source: yfinance
+    refresh_minutes: 5
+    pairs_with: ["GLD", "SI=F"]
+    purpose: "Futures reference for gold; numerator of the gold/silver ratio"
+    verified: false
+
+  - symbol: "GDX"
+    name: VanEck Gold Miners ETF
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["GLD"]
+    purpose: "Miners often lead or diverge from the metal at turns"
+    verified: false
+
+  - symbol: "SIL"
+    name: Global X Silver Miners ETF
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["SI=F", "SLV"]
+    purpose: "Silver miner confirmation and divergence"
+    verified: false
+
+  - symbol: "HG=F"
+    name: Copper futures
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["SI=F"]
+    purpose: "Industrial demand context for silver"
+    verified: false
+
+  - symbol: "NVDA"
+    name: NVIDIA
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["MSFT"]
+    purpose: "AI-capex sentiment peer; its earnings often move MSFT"
+    verified: false
+
+  - symbol: "XLK"
+    name: Technology Select Sector SPDR
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["MSFT"]
+    purpose: "Is MSFT leading or lagging the tech sector?"
+    verified: false
+
+# ---------------------------------------------------------------------------
+# COMPUTED RATIOS (calculated in code by tools/ratios.py, never by the model)
+# trend_ref: compare the ratio to its own moving average to label direction
+# ---------------------------------------------------------------------------
+ratios:
+  - name: gold_silver_ratio
+    formula: "GC=F / SI=F"
+    relevant_to: ["SI=F", "SLV", "GLD"]
+    trend_ref: sma_50d
+    reading: "Rising = silver underperforming gold; falling = silver outperforming"
+
+  - name: bch_btc
+    formula: "BCH-USD / BTC-USD"
+    relevant_to: ["BCH-USD"]
+    trend_ref: sma_50d
+    reading: "Relative strength of BCH versus BTC"
+
+  - name: eth_btc
+    formula: "ETH-USD / BTC-USD"
+    relevant_to: ["BTC-USD", "BCH-USD"]
+    trend_ref: sma_50d
+    reading: "Crypto risk appetite; rising often signals broader altcoin strength"
+
+  # --- filled in by the agent on 2026-10-04 (the pasted file was cut off here) ---
+  - name: msft_qqq
+    formula: "MSFT / QQQ"
+    relevant_to: ["MSFT"]
+    trend_ref: sma_50d
+    reading: "Rising = MSFT outperforming the Nasdaq-100; falling = lagging it"
+
+  - name: gdx_gld
+    formula: "GDX / GLD"
+    relevant_to: ["GLD", "XAU/USD"]
+    trend_ref: sma_50d
+    reading: "Rising = miners leading the metal (often bullish confirmation); falling = miners lagging (caution at highs)"
+
+# ---------------------------------------------------------------------------
+# CONTEXT MAP (filled in by the agent from the entries above; the pasted file was cut off here)
+# What to pull alongside each core instrument. feeds = extra_feeds from tools/crypto_feeds.py
+# ---------------------------------------------------------------------------
+context:
+  BTC/USDT: {pairs: ["ETH-USD", "IBIT"], drivers: ["DX-Y.NYB", "^VIX", "QQQ"], ratios: ["eth_btc"], feeds: [funding_rate, open_interest, long_short_ratio, btc_dominance]}
+  BCH/USDT: {pairs: ["BTC-USD"], drivers: ["DX-Y.NYB", "^VIX"], ratios: ["bch_btc", "eth_btc"], feeds: [funding_rate, open_interest, btc_dominance]}
+  XAU/USD:  {pairs: ["GLD", "GC=F", "SI=F"], drivers: ["DX-Y.NYB", "DFII10", "^TNX"], ratios: ["gold_silver_ratio", "gdx_gld"], feeds: []}
+  SI:       {pairs: ["GC=F", "SIL", "HG=F"], drivers: ["DX-Y.NYB", "DFII10", "^TNX"], ratios: ["gold_silver_ratio"], feeds: []}
+  SLV:      {pairs: ["SI=F", "SIL"], drivers: ["DX-Y.NYB", "DFII10"], ratios: ["gold_silver_ratio"], feeds: []}
+  GLD:      {pairs: ["GC=F", "GDX"], drivers: ["DX-Y.NYB", "DFII10", "^TNX"], ratios: ["gold_silver_ratio", "gdx_gld"], feeds: []}
+  MSFT:     {pairs: ["QQQ", "XLK", "NVDA"], drivers: ["^TNX", "^VIX", "QQQ"], ratios: ["msft_qqq"], feeds: []}

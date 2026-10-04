@@ -27,12 +27,11 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import fetch_prices, levels, positions  # noqa: E402
+from tools import fetch_prices, levels, positions, universe  # noqa: E402
 from tools import options_math as om  # noqa: E402
 from tools import position_calc as pc  # noqa: E402
 
-THEMES = {"BTC/USDT": "crypto", "BCH/USDT": "crypto", "XAU/USD": "precious metals", "SI": "precious metals",
-          "GLD": "precious metals", "MSFT": "equities"}
+THEMES = universe.themes()  # id -> theme, from memory/universe.yaml asset_class
 DEFAULT_SHOCKS = (-10.0, -5.0, -3.0, 3.0, 5.0, 10.0)
 RISK_FREE = 0.04  # [ASSUMPTION] for option valuation; pass --rate to change
 CORR_FLAG = 0.7

@@ -92,31 +92,43 @@ def get_ohlcv(symbol: str, tf: str, bars: int = DEFAULT_BARS, use_cache: bool = 
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if time.time() - meta["fetched_epoch"] <= ttl and meta["bars_requested"] >= bars:
             df = pd.read_pickle(pkl).tail(bars)
-            return _stamp(df, symbol, tf, src, meta["fetched_at"], cached=True, now=now)
+            return _stamp(df, symbol, tf, meta.get("source", src.label), meta["fetched_at"], cached=True, now=now)
 
     now = now or pd.Timestamp.now(tz="UTC")
     start = now - pd.Timedelta(days=history_days(src, tf, bars))
+    used = src.label
     try:
         df = _fetch_raw(src, tf, start, now)
+        if df is None or df.empty:
+            raise RuntimeError("returned no data")
+        if tf == "4H" and df.attrs.get("feed"):
+            used = df.attrs["feed"]  # load_4h already fell back to the backup if needed
     except Exception as exc:
-        raise FetchError(f"{symbol} {tf}: {src.label} failed: {exc}. {FALLBACK}") from exc
-    if df is None or df.empty:
-        raise FetchError(f"{symbol} {tf}: {src.label} returned no data. {FALLBACK}")
+        if src.backup is None or tf == "4H":
+            raise FetchError(f"{symbol} {tf}: {src.label} failed: {exc}. {FALLBACK}") from exc
+        try:
+            df = _fetch_raw(src.backup, tf, start, now)
+            if df is None or df.empty:
+                raise RuntimeError("returned no data")
+            used = f"{src.backup.label} (primary {src.label} failed: {str(exc)[:60]})"
+        except Exception as exc2:
+            raise FetchError(f"{symbol} {tf}: {src.label} failed: {exc}; backup {src.backup.label} failed: "
+                             f"{exc2}. {FALLBACK}") from exc2
     df = df[[c for c in ("open", "high", "low", "close", "volume", "confirmed") if c in df]].tail(bars)
 
     fetched_at = now.isoformat()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     df.to_pickle(pkl)
     meta_path.write_text(json.dumps({"fetched_at": fetched_at, "fetched_epoch": time.time(),
-                                     "bars_requested": bars}), encoding="utf-8")
-    return _stamp(df, symbol, tf, src, fetched_at, cached=False, now=now)
+                                     "bars_requested": bars, "source": used}), encoding="utf-8")
+    return _stamp(df, symbol, tf, used, fetched_at, cached=False, now=now)
 
 
-def _stamp(df: pd.DataFrame, symbol: str, tf: str, src: levels.Source, fetched_at: str,
+def _stamp(df: pd.DataFrame, symbol: str, tf: str, source: str, fetched_at: str,
            cached: bool, now: pd.Timestamp | None) -> pd.DataFrame:
     now = now or pd.Timestamp.now(tz="UTC")
     df = df.copy()
-    df.attrs.update(symbol=symbol, tf=tf, source=src.label, fetched_at=fetched_at, cached=cached,
+    df.attrs.update(symbol=symbol, tf=tf, source=source, fetched_at=fetched_at, cached=cached,
                     last_bar_age_hours=round((now - df.index[-1]).total_seconds() / 3600, 2))
     return df
 
