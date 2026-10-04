@@ -50,7 +50,9 @@ core:
     drivers: ["DX-Y.NYB", "^VIX", "QQQ"]
     extra_feeds: [funding_rate, open_interest, long_short_ratio, btc_dominance]
     notes: "Often trades as high-beta tech. Check QQQ and DXY before trusting a BTC-only read."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "OKX BTC-USDT last 86,433.10 at 10-04 22:00Z; backup BTC-USD OK (86,415.59)"
 
   - symbol: "BCH-USD"
     id: "BCH/USDT"
@@ -65,7 +67,9 @@ core:
     drivers: ["DX-Y.NYB", "^VIX"]
     extra_feeds: [funding_rate, open_interest, btc_dominance]
     notes: "Usually a beta play on BTC. Ratio BCH/BTC shows whether the move is BCH-specific."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "OKX BCH-USDT last 318.40 at 10-04 22:00Z; backup BCH-USD OK (318.31)"
 
   - symbol: "XAU/USD"
     id: "XAU/USD"
@@ -80,7 +84,9 @@ core:
     pairs_with: ["GLD", "GC=F", "SI=F"]
     drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
     notes: "Spot proxy: XAUT can trade at a small premium/discount; Swissquote spot cross-check warns above 0.2%. XAUT volume is token volume."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "OKX XAUT-USDT last 4,145.00 at 10-04 22:00Z; vs Swissquote spot 4,142.99 (+0.05%); backup GC=F OK (4,168.70)"
 
   - symbol: "SI=F"
     id: "SI"
@@ -92,7 +98,9 @@ core:
     pairs_with: ["GC=F", "SIL", "HG=F"]
     drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
     notes: "Industrial plus monetary demand. Gap risk over weekends and session breaks."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 331 daily bars, last 2026-10-04 = 61.04; 1h OK (87 bars); continuous contract: 69 daily moves > 4% in the window (check for roll gaps before using levels across them)"
 
   - symbol: "SLV"
     id: "SLV"
@@ -104,7 +112,9 @@ core:
     pairs_with: ["SI=F", "SIL"]
     drivers: ["DX-Y.NYB", "DFII10"]
     notes: "Use for flow and volume context; use SI=F for price levels."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 54.74; 1h OK (35 bars)"
 
   - symbol: "GLD"
     id: "GLD"
@@ -116,7 +126,9 @@ core:
     pairs_with: ["GC=F", "GDX"]
     drivers: ["DX-Y.NYB", "DFII10", "^TNX"]
     notes: "Real yields are often the cleaner driver than nominal yields."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 380.14; 1h OK (35 bars)"
 
   - symbol: "MSFT"
     id: "MSFT"
@@ -128,7 +140,9 @@ core:
     pairs_with: ["QQQ", "XLK", "NVDA"]
     drivers: ["^TNX", "^VIX", "QQQ"]
     notes: "Check earnings date and peer earnings (NVDA, AMZN, GOOGL) before any position review."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 517.53; 1h OK (35 bars)"
 
 # ---------------------------------------------------------------------------
 # DRIVERS (5): explain why your positions move
@@ -140,7 +154,9 @@ drivers:
     refresh_minutes: 15
     influences: ["SI=F", "SLV", "GLD", "BTC-USD", "BCH-USD"]
     expected_relation: "Strong dollar tends to pressure metals and crypto (verify with rolling correlation)"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 330 daily bars, last 2026-10-04 = 101.88; 1h OK (90 bars)"
 
   - symbol: "^TNX"
     name: US 10-year Treasury yield
@@ -149,7 +165,9 @@ drivers:
     influences: ["GLD", "SI=F", "MSFT"]
     expected_relation: "Rising yields tend to hurt non-yielding assets and growth stocks"
     notes: "Yahoo quotes this as yield x10 on some feeds; confirm units before use."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 5.28; 1h OK (35 bars); units: percent"
 
   - symbol: "^VIX"
     name: CBOE Volatility Index
@@ -157,7 +175,9 @@ drivers:
     refresh_minutes: 15
     influences: ["BTC-USD", "BCH-USD", "MSFT"]
     expected_relation: "Risk-off regime detection; spikes often coincide with leveraged-asset drawdowns"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 387 daily bars, last 2026-10-02 = 15.31; 1h OK (70 bars)"
 
   - symbol: "QQQ"
     name: Invesco Nasdaq-100 ETF
@@ -165,7 +185,9 @@ drivers:
     refresh_minutes: 5
     influences: ["MSFT", "BTC-USD"]
     expected_relation: "Tech risk appetite; BTC often correlates with it, strength varies over time"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 749.58; 1h OK (35 bars)"
 
   - symbol: "DFII10"
     name: 10-year real yield (TIPS)
@@ -175,7 +197,9 @@ drivers:
     influences: ["GLD", "SI=F", "SLV"]
     expected_relation: "Falling real yields tend to support gold and silver"
     notes: "Try the keyless FRED CSV endpoint first. If it fails, read FRED_API_KEY from env. If neither works, report unavailable."
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "FRED 5942 obs, last 2026-10-01 = 2.88"
 
 # ---------------------------------------------------------------------------
 # PAIRS (8): confirm or contradict a core move
@@ -187,7 +211,9 @@ pairs:
     refresh_minutes: 5
     pairs_with: ["BTC-USD"]
     purpose: "Shows whether a move is crypto-wide or BTC-only; feeds the ETH/BTC ratio"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-04 = 2,725.26; 1h OK (119 bars)"
 
   - symbol: "IBIT"
     name: iShares Bitcoin Trust (spot BTC ETF)
@@ -195,7 +221,9 @@ pairs:
     refresh_minutes: 5
     pairs_with: ["BTC-USD"]
     purpose: "US-hours price action and institutional flow proxy"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 47.73; 1h OK (35 bars)"
 
   - symbol: "GC=F"
     name: Gold futures
@@ -203,7 +231,9 @@ pairs:
     refresh_minutes: 5
     pairs_with: ["GLD", "SI=F"]
     purpose: "Futures reference for gold; numerator of the gold/silver ratio"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 331 daily bars, last 2026-10-04 = 4,168.80; 1h OK (87 bars); continuous contract: 6 daily moves > 4% in the window (check for roll gaps before using levels across them)"
 
   - symbol: "GDX"
     name: VanEck Gold Miners ETF
@@ -211,7 +241,9 @@ pairs:
     refresh_minutes: 15
     pairs_with: ["GLD"]
     purpose: "Miners often lead or diverge from the metal at turns"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 87.78; 1h OK (35 bars)"
 
   - symbol: "SIL"
     name: Global X Silver Miners ETF
@@ -219,7 +251,9 @@ pairs:
     refresh_minutes: 15
     pairs_with: ["SI=F", "SLV"]
     purpose: "Silver miner confirmation and divergence"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 86.50; 1h OK (35 bars)"
 
   - symbol: "HG=F"
     name: Copper futures
@@ -227,7 +261,9 @@ pairs:
     refresh_minutes: 15
     pairs_with: ["SI=F"]
     purpose: "Industrial demand context for silver"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 331 daily bars, last 2026-10-04 = 6.59; 1h OK (87 bars); continuous contract: 13 daily moves > 4% in the window (check for roll gaps before using levels across them)"
 
   - symbol: "NVDA"
     name: NVIDIA
@@ -235,7 +271,9 @@ pairs:
     refresh_minutes: 15
     pairs_with: ["MSFT"]
     purpose: "AI-capex sentiment peer; its earnings often move MSFT"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 233.95; 1h OK (35 bars)"
 
   - symbol: "XLK"
     name: Technology Select Sector SPDR
@@ -243,7 +281,9 @@ pairs:
     refresh_minutes: 15
     pairs_with: ["MSFT"]
     purpose: "Is MSFT leading or lagging the tech sector?"
-    verified: false
+    verified: true
+    last_verified: 2026-10-04
+    verify_note: "yfinance 400 daily bars, last 2026-10-02 = 199.81; 1h OK (35 bars)"
 
 # ---------------------------------------------------------------------------
 # COMPUTED RATIOS (calculated in code by tools/ratios.py, never by the model)
