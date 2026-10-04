@@ -7,6 +7,7 @@ read files; it can't ask follow-up questions, so it applies the AGENT.md fallbac
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,31 @@ def run_quick(text: str, equity: float | None = None, risk_pct: float | None = N
     return {"ok": ok, "markdown": md, "seconds": round(time.time() - t0, 1)}
 
 
+AUTH_ERRORS = [
+    ("credit balance is too low", "**Claude account has no credit.** Claude Code is billing an API key with an empty "
+     "balance. If `ANTHROPIC_API_KEY` is set on purpose, add credit to that key. Otherwise remove the variable "
+     "(the interface already drops it unless TRADING_AGENT_KEEP_API_KEY=1) and log in with `claude` → `/login`."),
+    ("invalid api key", "**Claude rejected the API key.** Log in with `claude` → `/login`, or fix the key."),
+    ("please run /login", "**Claude Code isn't logged in.** Run `claude` once and use `/login`."),
+]
+
+
+def agent_env() -> dict:
+    """Environment for the headless agent.
+
+    ANTHROPIC_API_KEY takes priority over Claude Code's own login. A stale or empty-balance key in the
+    environment would make every run fail with "Credit balance is too low", so it's dropped unless
+    TRADING_AGENT_KEEP_API_KEY=1. Nested-session variables from a parent Claude Code session are dropped too.
+    """
+    env = dict(os.environ)
+    if env.get("TRADING_AGENT_KEEP_API_KEY") != "1":
+        env.pop("ANTHROPIC_API_KEY", None)
+    for k in ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET",
+              "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_PID"):
+        env.pop(k, None)
+    return env
+
+
 def claude_path() -> str | None:
     return shutil.which("claude")
 
@@ -85,17 +111,22 @@ def run_agent(text: str, timeout: int = AGENT_TIMEOUT) -> dict:
     t0 = time.time()
     try:
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=timeout)
+                              errors="replace", timeout=timeout, env=agent_env())
     except subprocess.TimeoutExpired:
         return {"ok": False, "seconds": timeout, "markdown": f"**Agent timed out after {timeout}s.** Try the quick check."}
     out = (proc.stdout or "").strip()
     if proc.returncode != 0 or not out:
         err = (proc.stderr or "").strip()[-1500:]
+        secs = round(time.time() - t0, 1)
+        both = f"{out}\n{err}".lower()
+        for needle, msg in AUTH_ERRORS:
+            if needle in both:
+                return {"ok": False, "seconds": secs, "markdown": msg + "\n\n(The quick check works without this.)"}
         if "not been trusted" in err:
-            return {"ok": False, "seconds": round(time.time() - t0, 1), "markdown":
+            return {"ok": False, "seconds": secs, "markdown":
                     "**One-time setup needed:** Claude Code hasn't trusted this folder yet. Open a terminal, run\n\n"
                     f"```\ncd {ROOT}\nclaude\n```\n\naccept the trust prompt, type `/exit`, then try again. "
                     "(The quick check works without this.)"}
-        return {"ok": False, "seconds": round(time.time() - t0, 1),
-                "markdown": f"**Agent failed (exit {proc.returncode}).**\n\n```\n{err or out or 'no output'}\n```"}
+        return {"ok": False, "seconds": secs,
+                "markdown": f"**Agent failed (exit {proc.returncode}).**\n\n```\n{(out + chr(10) + err).strip() or 'no output'}\n```"}
     return {"ok": True, "markdown": out, "seconds": round(time.time() - t0, 1)}

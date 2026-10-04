@@ -112,3 +112,34 @@ def test_run_agent_explains_untrusted_workspace(monkeypatch):
         cmd, 1, stdout="", stderr="Ignoring 11 permissions.allow entries: this workspace has not been trusted."))
     res = agent.run_agent("BTC long")
     assert not res["ok"] and "One-time setup" in res["markdown"] and "claude" in res["markdown"]
+
+
+def test_credit_error_is_reported_even_with_trust_warning(monkeypatch):
+    monkeypatch.setattr(agent, "claude_path", lambda: "claude")
+    monkeypatch.setattr(agent.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(
+        cmd, 1, stdout="Credit balance is too low", stderr="Ignoring 11 permissions.allow entries: not been trusted"))
+    res = agent.run_agent("BTC long")
+    assert not res["ok"] and "no credit" in res["markdown"] and "One-time setup" not in res["markdown"]
+
+
+def test_agent_env_drops_api_key_and_nested_session_vars(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.delenv("TRADING_AGENT_KEEP_API_KEY", raising=False)
+    env = agent.agent_env()
+    assert "ANTHROPIC_API_KEY" not in env and "CLAUDECODE" not in env
+    monkeypatch.setenv("TRADING_AGENT_KEEP_API_KEY", "1")
+    assert agent.agent_env()["ANTHROPIC_API_KEY"] == "sk-test"
+
+
+def test_run_agent_passes_clean_env(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.delenv("TRADING_AGENT_KEEP_API_KEY", raising=False)
+    monkeypatch.setattr(agent, "claude_path", lambda: "claude")
+
+    def fake_run(cmd, **kw):
+        seen["env"] = kw["env"]
+        return subprocess.CompletedProcess(cmd, 0, stdout="REPORT", stderr="")
+    monkeypatch.setattr(agent.subprocess, "run", fake_run)
+    assert agent.run_agent("BTC long")["ok"] and "ANTHROPIC_API_KEY" not in seen["env"]
