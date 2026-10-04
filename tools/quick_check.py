@@ -25,7 +25,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import fetch_prices, indicators, levels  # noqa: E402
+from tools import fetch_prices, indicators, levels, vol_check  # noqa: E402
 from tools import position_calc as pc  # noqa: E402
 
 # ---------- parsing ----------
@@ -273,6 +273,15 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
     elif abs(stop - liq) < atr14:
         flags.append(("warn", f"liquidation {liq:,.2f} is only {abs(stop - liq) / atr14:.2f} ATR beyond the stop "
                               f"(< 1 ATR). Max leverage for a 1 ATR buffer: {out['max_leverage_1atr']:.1f}x"))
+    out["vol"] = None
+    if leverage > 1 and frames.get("1D") is not None and len(frames["1D"]) > 60:
+        out["vol"] = vol_check.analyze(frames["1D"], df4, side, entry, leverage, stop, mmr)
+        seen = {m for _, m in flags}
+        for lvl, msg in out["vol"]["flags"]:
+            if "liquidated before the stop" in msg or "between stop and liquidation" in msg:
+                continue  # already covered by the stop-vs-liquidation checks above
+            if msg not in seen:
+                flags.append((lvl, f"volatility: {msg}"))
     if out["stop_width_atr"] > 4:
         flags.append(("fail", f"stop is {out['stop_width_atr']:.2f} ATR from entry (> 4 ATR): no valid setup"))
     elif out["stop_width_atr"] > 3:
@@ -378,6 +387,13 @@ def render(a: dict) -> str:
             lines.append(f"\nStop width {a['stop_width_atr']:.2f} ATR | max leverage for 1 ATR liq buffer "
                          f"{_f(a['max_leverage_1atr'], 1)}x [CALC]")
 
+    v = a.get("vol")
+    if v:
+        p = lambda n: "n/a" if v["liq_touch"].get(n) is None else f"{v['liq_touch'][n]:.0%}"
+        lines += ["", f"Leverage vs volatility: liquidation {v['liq_dist_pct']:.2f}% away = {v['liq_atr_1d']:.2f} daily ATR. "
+                      f"Historically a move that size against a {a['side']} came within 1d / 3d / 5d / 10d on "
+                      f"{p(1)} / {p(3)} / {p(5)} / {p(10)} of days (last {v['lookback_days']} days, not a forecast). "
+                      f"Leverage that kept 5-day odds <= 5%: {_f(v['safe_leverage_5d'], 1)}x [CALC]"]
     lv = a["levels"]
     lines += ["", "Reference levels: " + ", ".join(f"{k} {_f(lv[k])}" for k in ("PDH", "PDL", "PWH", "PWL", "PMthH", "PMthL")),
               "VWAP: " + ", ".join(f"{k} {_f(a['vwap'][k])}" for k in ("session", "week", "month"))
