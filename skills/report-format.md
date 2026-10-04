@@ -45,7 +45,7 @@ Every table row gets exactly one tag: the weakest source that went into it. A le
 ## BCH/USDT: 4H, as-of 2026-10-04 16:00 UTC
 Data: OKX BCH-USDT, 4H, 2026-08-25 -> 2026-10-04 16:00 UTC, 245 bars, last bar open [DATA]
 Structure: Range 296.30-322.60 (10-02 sweep low to PDH); price at 76.8% (upper third), zone at 51.3% (middle third) [CALC/JUDGMENT]
-Grade: B (4H and daily aligned bullish = A, minus one: stop is 3.04 ATR wide) [JUDGMENT]
+Grade: B, conviction +4 long (EMA +3/5, VWAP +1/3; against: 1D EMA50 < EMA200, price < session VWAP) [CALC → JUDGMENT]
 Alignment: long +1 of 5 TFs (15M bear, 1H mixed, 4H bull, 1D bull, 1W mixed) [CALC]
 P(T1 before stop): 35%: mid-range zone and a stop 3 ATR wide; T1 is only 0.79R away [JUDGMENT]
 

@@ -26,6 +26,7 @@ from tools import data, fetch_prices, levels  # noqa: E402
 CORR_WINDOW = 30
 DRIVER_PERIOD = "120d"
 EMA_SET = (9, 21, 50, 200)
+HOURLY_BARS_FOR_VWAP = 800  # > 31 days of 24h bars
 VOL_TREND_BAND = 0.10  # SMA20/SMA50 of volume above 1.10 = rising, below 0.90 = falling
 SWING_SIDE = 2
 # EMA/RSI need about 3x their period in bars before values settle.
@@ -120,6 +121,114 @@ def tf_state(close: float, ema20: float, ema50: float, rsi14: float) -> str:
 def alignment_score(states: dict[str, str], direction: str) -> int:
     want, against = ("bull", "bear") if direction == "long" else ("bear", "bull")
     return sum(st == want for st in states.values()) - sum(st == against for st in states.values())
+
+
+# ---------- VWAP and EMA + VWAP conviction (skills/multi-timeframe-momentum.md) ----------
+
+def anchored_vwap(df: pd.DataFrame, keys) -> pd.Series:
+    """VWAP of typical price (H+L+C)/3, restarting at every change of `keys` (session, week, month)."""
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    pv = (tp * df["volume"]).groupby(keys).cumsum()
+    vol = df["volume"].groupby(keys).cumsum()
+    return (pv / vol.where(vol > 0)).rename("vwap")
+
+
+def vwap_levels(fine: pd.DataFrame | None, hourly: pd.DataFrame | None, session: levels.Session) -> dict:
+    """Current session VWAP (from 15M), weekly and monthly anchored VWAP (from 1H), on the levels.py calendar."""
+    out = {"session": None, "week": None, "month": None, "notes": []}
+    if fine is not None and len(fine):
+        dates = levels.session_dates(fine.index, session)
+        out["session"] = float(anchored_vwap(fine, dates).iloc[-1])
+    if hourly is not None and len(hourly):
+        dates = levels.session_dates(hourly.index, session)
+        weeks, months = dates.to_period("W-SUN"), dates.to_period("M")
+        out["week"] = float(anchored_vwap(hourly, weeks).iloc[-1])
+        out["month"] = float(anchored_vwap(hourly, months).iloc[-1])
+        if (months == months[-1]).all():
+            out["notes"].append("1H history starts inside the current month: monthly VWAP is partial")
+    return {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in out.items()}
+
+
+def _vs(a: float | None, b: float | None) -> int:
+    if a is None or b is None or np.isnan(a) or np.isnan(b):
+        return 0
+    return 1 if a > b else -1 if a < b else 0
+
+
+CONVICTION_CHECKS = [
+    # (component, label, function of (price, e4h, e1d, vw) -> (a, b))
+    ("EMA", "4H price vs EMA21", lambda p, h, d, v: (p, h["ema21"])),
+    ("EMA", "4H EMA21 vs EMA50", lambda p, h, d, v: (h["ema21"], h["ema50"])),
+    ("EMA", "4H price vs EMA200", lambda p, h, d, v: (p, h["ema200"])),
+    ("EMA", "1D price vs EMA21", lambda p, h, d, v: (p, d["ema21"])),
+    ("EMA", "1D EMA50 vs EMA200", lambda p, h, d, v: (d["ema50"], d["ema200"])),
+    ("VWAP", "price vs session VWAP", lambda p, h, d, v: (p, v["session"])),
+    ("VWAP", "price vs weekly VWAP", lambda p, h, d, v: (p, v["week"])),
+    ("VWAP", "price vs monthly VWAP", lambda p, h, d, v: (p, v["month"])),
+]
+
+
+def conviction(direction: str, price: float, e4h: dict, e1d: dict, vw: dict) -> dict:
+    """EMA + VWAP conviction: 8 checks, +1 with the trade / -1 against / 0 n/a. Score -8..+8.
+
+    Grade before modifiers: A >= +6, B +3..+5, C <= +2 (<= 0 is counter-trend).
+    An n/a EMA200 (short history) or missing VWAP scores 0, which caps what the score can reach.
+    """
+    sign = 1 if direction == "long" else -1
+    checks, parts = [], {"EMA": 0, "VWAP": 0}
+    for comp, label, fn in CONVICTION_CHECKS:
+        a, b = fn(price, e4h, e1d, vw)
+        pts = sign * _vs(a, b)
+        parts[comp] += pts
+        checks.append({"component": comp, "check": label, "a": a, "b": b, "points": pts})
+    score = parts["EMA"] + parts["VWAP"]
+    grade = "A" if score >= 6 else "B" if score >= 3 else "C"
+    label = "counter-trend" if score <= 0 else "weak" if grade == "C" else ""
+    return {"direction": direction, "score": score, "ema_score": parts["EMA"], "vwap_score": parts["VWAP"],
+            "grade": grade, "label": label, "checks": checks, "na": sum(c["points"] == 0 for c in checks)}
+
+
+def ema_values(df: pd.DataFrame | None) -> dict:
+    keys = ("ema21", "ema50", "ema200")
+    if df is None or len(df) < 2:
+        return dict.fromkeys(keys, None)
+    out = {}
+    for n in (21, 50, 200):
+        v = float(ema(df["close"], n).iloc[-1])
+        out[f"ema{n}"] = None if np.isnan(v) or (n == 200 and ema_quality(len(df), 200) == "n/a") else v
+    return out
+
+
+def conviction_section(frames: dict[str, pd.DataFrame], session: levels.Session, volume_is_proxy: bool) -> tuple[str, dict]:
+    df4 = frames.get("4H")
+    price = float(df4["close"].iloc[-1])
+    atr14 = float(atr(df4).iloc[-1])
+    e4h, e1d = ema_values(df4), ema_values(frames.get("1D"))
+    vw = vwap_levels(frames.get("15M"), frames.get("1H"), session)
+    res = {d: conviction(d, price, e4h, e1d, vw) for d in ("long", "short")}
+    lines = ["", "**Conviction (EMA + VWAP)**", "",
+             "| Check | Value | vs | Long | Short |", "|---|---|---|---|---|"]
+    for cl, cs in zip(res["long"]["checks"], res["short"]["checks"]):
+        lines.append(f"| {cl['check']} | {_f(cl['a'])} | {_f(cl['b'])} | {cl['points']:+d} | {cs['points']:+d} |")
+    for d in ("long", "short"):
+        r = res[d]
+        tag = f", {r['label']}" if r["label"] else ""
+        lines.append(f"\nConviction {d}: **{r['score']:+d} -> {r['grade']}{tag}** (EMA {r['ema_score']:+d}/5, "
+                     f"VWAP {r['vwap_score']:+d}/3{', ' + str(r['na']) + ' check(s) n/a' if r['na'] else ''})")
+    dyn = [("4H EMA21", e4h["ema21"]), ("4H EMA50", e4h["ema50"]), ("4H EMA200", e4h["ema200"]),
+           ("1D EMA21", e1d["ema21"]), ("1D EMA50", e1d["ema50"]), ("1D EMA200", e1d["ema200"]),
+           ("Session VWAP", vw["session"]), ("Weekly VWAP", vw["week"]), ("Monthly VWAP", vw["month"])]
+    dyn = sorted([(k, v) for k, v in dyn if v is not None], key=lambda kv: -kv[1])
+    lines += ["", "Dynamic levels (EMA/VWAP, for confluence; not targets on their own):", "",
+              "| Level | Value | Dist | ATR away |", "|---|---|---|---|"]
+    lines += [f"| {k} | {_f(v)} | {(v / price - 1) * 100:+.2f}% | {(v - price) / atr14:+.2f} |" for k, v in dyn]
+    notes = list(vw["notes"])
+    if volume_is_proxy:
+        notes.append("VWAP uses XAUT token volume (a proxy for gold): treat VWAP checks as lower quality")
+    if notes:
+        lines += [""] + [f"Note: {n}" for n in notes]
+    return "\n".join(lines) + "\n", {"conviction": res, "vwap": vw, "ema_4h": e4h, "ema_1d": e1d, "atr14": atr14,
+                                     "price": price}
 
 
 def timeframe_row(df: pd.DataFrame) -> dict:
@@ -282,8 +391,8 @@ def render(symbol: str, src: levels.Source, df: pd.DataFrame, s: dict) -> str:
         f"Structure: {st['structure']}; last-3-swing range {_f(st['range_low'])}-{_f(st['range_high'])}, "
         f"price at {_f(st['range_pos'], 1)}%",
     ]
-    for g in s["grades"]:
-        lines.append(f"Base grade {g['direction']}: **{g['grade']}** (4H {g['4h']}, daily {g['daily']})")
+    lines.append("Momentum context (EMA20/50 + RSI, not the grade): "
+                 + "; ".join(f"{g['direction']} {g['grade']} (4H {g['4h']}, daily {g['daily']})" for g in s["grades"]))
     if src.drop_weekend:
         lines.append("Note: XAUT volume is token volume, not gold market volume; ignore RVOL.")
     if warm:
@@ -350,7 +459,8 @@ def main(argv: list[str]) -> int:
     if unknown:
         print(f"Unknown symbol(s): {', '.join(unknown)}. Watchlist: {', '.join(levels.WATCHLIST)}")
         return 2
-    tfs = list(dict.fromkeys(["4H", *args.tf]))  # 4H always: structure and grade are built on it
+    # 4H/1D/1H/15M always: structure, EMA and VWAP conviction need them
+    tfs = list(dict.fromkeys(["4H", "1D", "1H", "15M", *args.tf]))
 
     levels.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now = pd.Timestamp.now(tz="UTC")
@@ -360,7 +470,9 @@ def main(argv: list[str]) -> int:
         frames, errors = {}, {}
         for tf in tfs:
             try:
-                frames[tf] = fetch_prices.get_ohlcv(sym, tf, bars=args.bars)
+                # 1H needs at least a month of bars for the monthly VWAP
+                bars = max(args.bars, HOURLY_BARS_FOR_VWAP) if tf == "1H" else args.bars
+                frames[tf] = fetch_prices.get_ohlcv(sym, tf, bars=bars)
             except fetch_prices.FetchError as exc:
                 errors[tf], failed = str(exc), True
         df = frames.get("4H")
@@ -370,8 +482,9 @@ def main(argv: list[str]) -> int:
         s = summarize(df, src.session)
         daily[sym] = s["daily_series"]
         tf_text, _ = timeframe_section(frames, errors, ignore_volume=src.drop_weekend)
+        conv_text, _ = conviction_section(frames, src.session, volume_is_proxy=src.drop_weekend)
         fetched = ", ".join(f"{tf} {frames[tf].attrs['fetched_at'][:16]}Z" for tf in fetch_prices.TIMEFRAMES if tf in frames)
-        sections.append(render(sym, src, df, s) + tf_text + f"Fetched (UTC): {fetched}\n")
+        sections.append(render(sym, src, df, s) + conv_text + tf_text + f"Fetched (UTC): {fetched}\n")
     sections.append(correlation_section(daily, symbols))
 
     report = f"# Indicators: generated {now:%Y-%m-%d %H:%M} UTC ({args.bars} bars per TF)\n\n" + "\n".join(sections)

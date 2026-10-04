@@ -53,7 +53,7 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - News searches are allowed, but each one asks the user first (settings). (added: 2026-10-04)
 - The repo is **public** (github.com/superwrldcoin/trading-agent). User-supplied chart snapshots are not committed, and `trades.md` and `sessions.md` are gitignored. (added: 2026-10-04)
 - **P(T1 before stop)**: the user wants a judgment probability estimate per setup, tagged `[JUDGMENT]`, logged, and checked for calibration in post-mortems (chosen over dropping the field). (added: 2026-10-04)
-- **Indicators:** EMA 9/21/50/200, MACD, and the alignment score are reported as context; the A/B/C grade stays on the EMA20/50 + RSI rules (the user's choice). (added: 2026-10-04)
+- **Conviction = EMA + VWAP** (revised 2026-10-04: the user asked to "focus on EMA and VWAP as indicators" for trade conviction). The A/B/C grade comes from 8 checks: 4H price/EMA21, EMA21/EMA50, price/EMA200; 1D price/EMA21, EMA50/EMA200; price vs session, weekly, and monthly VWAP. RSI, MACD, and the 5-TF alignment are context only. This replaces the earlier EMA20/50 + RSI grade. (added: 2026-10-04; revised: 2026-10-04)
 - Session logs go to `memory/sessions.md` via `tools/log_entry.py`, not to `journal.md`, so the journal stays lessons-only. (added: 2026-10-04)
 
 ## Not yet specified

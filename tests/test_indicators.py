@@ -194,3 +194,85 @@ def test_ema_quality_thresholds():
     assert ind.ema_quality(456, 200) == "approx"  # BTC weekly: ~8%
     assert ind.ema_quality(600, 200) == "approx"  # ~1.8%
     assert ind.ema_quality(700, 200) == ""        # < 1%
+
+
+def test_anchored_vwap_restarts_each_period():
+    idx = pd.DatetimeIndex(["2026-10-03 22:00", "2026-10-03 23:00", "2026-10-04 00:00", "2026-10-04 01:00"], tz="UTC")
+    df = pd.DataFrame({"high": [11.0, 13, 21, 23], "low": [9.0, 11, 19, 21], "close": [10.0, 12, 20, 22],
+                       "volume": [1.0, 3, 2, 2]}, index=idx)
+    v = ind.anchored_vwap(df, levels.session_dates(df.index, levels.CRYPTO))
+    # day 1: (10*1 + 12*3) / 4 = 11.5 ; day 2 restarts: (20*2 + 22*2) / 4 = 21
+    assert v.tolist() == [10.0, 11.5, 20.0, 21.0]
+
+
+def test_anchored_vwap_zero_volume_is_nan():
+    idx = pd.date_range("2026-10-04", periods=2, freq="1h", tz="UTC")
+    df = pd.DataFrame({"high": [1.0, 1], "low": [1.0, 1], "close": [1.0, 1], "volume": [0.0, 0]}, index=idx)
+    assert ind.anchored_vwap(df, levels.session_dates(df.index, levels.CRYPTO)).isna().all()
+
+
+def test_vwap_levels_session_week_month():
+    # Hourly: Sun Sep 27 (prior week, prior month), then Sat Oct 3 and Sun Oct 4. Typical price = (H+L+C)/3.
+    hourly = pd.concat([
+        bars([30.0] * 24, [30.0] * 24, closes=[30.0] * 24, start="2026-09-27", freq="1h"),   # tp 30
+        bars([10.0] * 24, [10.0] * 24, closes=[10.0] * 24, start="2026-10-03", freq="1h"),   # tp 10
+        bars([10.0] * 24, [10.0] * 24, closes=[40.0] * 24, start="2026-10-04", freq="1h"),   # tp 20
+    ])
+    fine = bars([20.0] * 8, [20.0] * 8, closes=[20.0] * 8, start="2026-10-04 10:00", freq="15min")
+    vw = ind.vwap_levels(fine, hourly, levels.CRYPTO)
+    assert vw["session"] == pytest.approx(20.0)
+    assert vw["week"] == pytest.approx(15.0)    # Oct 3 + Oct 4 (week Sep 28 - Oct 4); Sep 27 is the prior week
+    assert vw["month"] == pytest.approx(15.0)   # October only; September bars excluded
+    assert vw["notes"] == []
+    partial = ind.vwap_levels(None, hourly.loc["2026-10-03":], levels.CRYPTO)
+    assert partial["session"] is None and any("partial" in n for n in partial["notes"])
+
+
+E4 = {"ema21": 100.0, "ema50": 95.0, "ema200": 90.0}
+E1 = {"ema21": 98.0, "ema50": 92.0, "ema200": 85.0}
+VW = {"session": 101.0, "week": 99.0, "month": 97.0}
+
+
+def test_conviction_full_long_is_a():
+    c = ind.conviction("long", 102.0, E4, E1, VW)
+    assert (c["score"], c["ema_score"], c["vwap_score"], c["grade"], c["label"]) == (8, 5, 3, "A", "")
+    s = ind.conviction("short", 102.0, E4, E1, VW)
+    assert (s["score"], s["grade"], s["label"]) == (-8, "C", "counter-trend")
+
+
+@pytest.mark.parametrize("price, score, grade", [
+    (102.0, 8, "A"),   # above everything
+    (100.5, 6, "A"),   # below session VWAP only: 8 - 2 = 6
+    (98.5, 2, "C"),    # below 4H EMA21, session and weekly VWAP: 5 up, 3 down
+    (96.0, -2, "C"),
+])
+def test_conviction_grade_boundaries(price, score, grade):
+    c = ind.conviction("long", price, E4, E1, VW)
+    assert (c["score"], c["grade"]) == (score, grade)
+
+
+def test_conviction_b_band_and_na_checks():
+    vw = {"session": None, "week": None, "month": None}
+    c = ind.conviction("long", 102.0, E4, E1, vw)
+    assert (c["score"], c["grade"], c["na"]) == (5, "B", 3)  # VWAP missing caps it at B
+    e4 = dict(E4, ema200=None)
+    c2 = ind.conviction("long", 102.0, e4, dict(E1, ema200=None), vw)
+    assert c2["score"] == 3 and c2["na"] == 5
+
+
+def test_ema_values_drops_unsettled_ema200():
+    short = bars([c + 1 for c in range(100, 400)], [c - 1 for c in range(100, 400)], closes=list(range(100, 400)))
+    v = ind.ema_values(short)
+    assert v["ema21"] is not None and v["ema200"] is None  # 300 bars: seed weight ~37%
+    assert ind.ema_values(None) == {"ema21": None, "ema50": None, "ema200": None}
+
+
+def test_conviction_section_renders_and_flags_proxy_volume():
+    n = 900
+    closes = list(np.linspace(100, 200, n))
+    df = bars([c + 1 for c in closes], [c - 1 for c in closes], closes=closes, start="2026-08-01", freq="1h")
+    frames = {"4H": df, "1D": df, "1H": df, "15M": df.tail(40)}
+    text, info = ind.conviction_section(frames, levels.CRYPTO, volume_is_proxy=True)
+    assert info["conviction"]["long"]["score"] >= 6 and info["conviction"]["long"]["grade"] == "A"
+    assert "Conviction long: **+" in text and "| Session VWAP |" in text
+    assert "XAUT token volume" in text
