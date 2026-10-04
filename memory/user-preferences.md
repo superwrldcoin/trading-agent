@@ -59,25 +59,36 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - Session logs go to `memory/sessions.md` via `tools/log_entry.py`, not to `journal.md`, so the journal stays lessons-only. (added: 2026-10-04)
 
 ## Not yet specified
-- Risk tolerance / max position size: **unknown**
-- Minimum reward:risk to show a setup: **unknown** (skills use a 2.0 default, tagged `[ASSUMPTION]`)
 - Report length / detail beyond the matrix: **unknown**
+- (Risk per trade and minimum R:R are now set in the Trading rules below.)
 
-## Trading rules (you set these)
+## Trading rules
 <!-- rules -->
-`tools/rules_check.py` checks every plan against this block before analysis. `null` = not set (reported as "not set", never assumed). Edit the numbers yourself; percentages are of account equity.
+`tools/rules_check.py` checks every plan against this block before analysis. `null` = not set. Percentages are of account equity.
+**Set by the agent on 2026-10-04 at the user's request** ("you set the rules as well"); the user has authorized the agent to adjust them when needed. Every change is noted in the change log below with its reason.
 ```json
 {
-  "max_leverage": {"crypto": null, "precious metals": null, "equities": null},
-  "max_risk_pct_per_trade": null,
-  "max_open_risk_pct": null,
-  "max_theme_gross_pct": null,
-  "max_positions": null,
-  "min_weighted_r": null,
-  "require_stop": null,
-  "max_liq_touch_5d_pct": null,
-  "max_option_premium_pct": null,
-  "loss_cooldown_hours": null,
-  "max_trades_per_day": null
+  "max_leverage": {"crypto": 10, "precious metals": 7, "equities": 2},
+  "max_risk_pct_per_trade": 1.0,
+  "max_open_risk_pct": 5.0,
+  "max_theme_gross_pct": 300,
+  "max_positions": 5,
+  "min_weighted_r": 2.0,
+  "require_stop": true,
+  "max_liq_touch_5d_pct": 5,
+  "max_option_premium_pct": 2.0,
+  "loss_cooldown_hours": 12,
+  "max_trades_per_day": 3
 }
 ```
+Why these values (evidence from the tools, 2026-10-04):
+- **Leverage, crypto 10x:** `vol_check.py` puts BTC's 5-day ≤ 5% liquidation-touch leverage at 9.1x. BCH runs about 2× BTC's volatility, so `max_liq_touch_5d_pct` catches it at a lower leverage on its own. **Metals 7x:** silver's equivalent was 7.2x. **Equities 2x:** a standard margin account limit.
+- **Risk 1% per trade, 5% open:** the risk-and-sizing skill defaults. Correlated positions (ρ ≥ 0.7) count as one bet toward the 5%.
+- **Theme gross 300%:** allows leveraged positions but caps one theme at 3× equity, so a 10% theme-wide drop costs at most about 30% before stops.
+- **5 positions, 3 trades/day, 12h cooldown after a loss:** limits overtrading and revenge trading after a stop-out.
+- **Min weighted R 2.0, stop required:** the skills' existing rules, now enforced.
+- **Liquidation-touch ≤ 5% within 5 days:** the same threshold the leverage-volatility gate uses for its ceiling.
+- **Options premium ≤ 2% per trade:** a long option can go to zero, so the premium is the risk, and it's held to about 2× the linear-trade risk because options can't be stopped cleanly.
+
+Change log:
+- 2026-10-04: initial values set by the agent (user delegated).

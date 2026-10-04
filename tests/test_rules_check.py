@@ -25,10 +25,16 @@ def test_load_rules_from_markdown(tmp_path):
     assert rc.load_rules(tmp_path / "missing.md") == {}
 
 
-def test_repo_rules_template_parses_and_is_unset():
+def test_repo_rules_block_parses_with_valid_types():
     rules = rc.load_rules()
-    assert "max_leverage" in rules and all(v is None for v in rules["max_leverage"].values())
-    assert rules["max_risk_pct_per_trade"] is None
+    expected = {"max_leverage", "max_risk_pct_per_trade", "max_open_risk_pct", "max_theme_gross_pct", "max_positions",
+                "min_weighted_r", "require_stop", "max_liq_touch_5d_pct", "max_option_premium_pct",
+                "loss_cooldown_hours", "max_trades_per_day"}
+    assert expected <= set(rules)
+    assert set(rules["max_leverage"]) == {"crypto", "precious metals", "equities"}
+    for k, v in rules.items():
+        vals = v.values() if isinstance(v, dict) else [v]
+        assert all(x is None or isinstance(x, (int, float, bool)) for x in vals), k
 
 
 def test_trade_history_parsing(tmp_path):

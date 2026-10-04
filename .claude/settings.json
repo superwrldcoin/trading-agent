@@ -17,8 +17,7 @@
     "ask": [
       "Bash(pip *)",
       "Bash(git push *)",
-      "WebFetch",
-      "WebSearch"
+      "WebFetch"
     ],
     "deny": [
       "Edit(/AGENT.md)",
