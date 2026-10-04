@@ -3,7 +3,7 @@
 ## Identity
 - Instrument: Bitcoin vs USD. Class notes: `crypto.md`
 - Data source: yfinance `BTC-USD` daily (driver series in tools/indicators.py) (added: 2026-10-04)
-- On the tools watchlist: **no**. It's used only as a driver for BCH. No 4H levels or indicators are produced for it.
+- On the tools watchlist: **yes** (`BTC/USDT`, OKX BTC-USDT), added 2026-10-04. Also used as a driver for BCH.
 
 ## Trading hours
 - 24/7 (see `crypto.md`)

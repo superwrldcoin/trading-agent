@@ -55,6 +55,8 @@ WATCHLIST = {
     "MSFT": Source("yfinance MSFT (1H -> 4H, RTH)", "yfinance", "MSFT", EQUITY),
     "SI": Source("yfinance SI=F (COMEX silver futures, 1H -> 4H)", "yfinance", "SI=F", CME),
     "BCH/USDT": Source("OKX BCH-USDT", "okx", "BCH-USDT", CRYPTO),
+    "BTC/USDT": Source("OKX BTC-USDT", "okx", "BTC-USDT", CRYPTO),
+    "GLD": Source("yfinance GLD (SPDR Gold ETF, 1H -> 4H, RTH)", "yfinance", "GLD", EQUITY),
 }
 
 
@@ -72,11 +74,11 @@ def resample_4h(hourly: pd.DataFrame, bar_offset: str) -> pd.DataFrame:
     return out.set_index("ts").sort_index()
 
 
-def drop_gold_weekend(df: pd.DataFrame) -> pd.DataFrame:
+def drop_gold_weekend(df: pd.DataFrame, bar_minutes: int = 240) -> pd.DataFrame:
     """Drop bars that sit entirely inside the spot-gold weekend close (Fri 17:00 -> Sun 18:00 ET)."""
     wall = df.index.tz_convert(NY).tz_localize(None)
     minutes = wall.dayofweek * 1440 + wall.hour * 60 + wall.minute
-    closed = (minutes >= 4 * 1440 + 17 * 60) & (minutes + 240 <= 6 * 1440 + 18 * 60)
+    closed = (minutes >= 4 * 1440 + 17 * 60) & (minutes + bar_minutes <= 6 * 1440 + 18 * 60)
     return df[~closed]
 
 

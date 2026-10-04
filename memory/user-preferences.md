@@ -7,8 +7,8 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - MSFT (Microsoft)
 - SI (silver)
 - BCH/USDT (Bitcoin Cash)
-
-Market files also exist for BTC and GLD (`memory/markets/`). Whether they belong on the watchlist: **unknown**.
+- BTC/USDT (Bitcoin) (added: 2026-10-04)
+- GLD (SPDR Gold ETF) (added: 2026-10-04). Relationship to the XAU/USD position (instead of or alongside): **unknown**
 
 ## Typical leverage
 - **unknown**. Not stated yet. Also unknown: equity, risk % per trade, exchange/broker, fees, margin mode (isolated or cross), instrument type per asset (spot, futures, ETF, CFD). Until these are known, sizing and leverage checks are skipped (AGENT.md F1).

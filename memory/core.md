@@ -15,6 +15,8 @@ All keyless. Run `python tools/levels.py [SYMBOL ...]` to fetch 4H candles and r
 | MSFT | yfinance `MSFT` 1H, resampled to 4H | Regular session only; 4H bars anchored at 09:30 ET; about 15 min delayed. |
 | SI | yfinance `SI=F` 1H, resampled to 4H | COMEX silver futures; 4H bars anchored at 18:00 ET session open. |
 | BCH/USDT | OKX `BCH-USDT` 4H | UTC days. Backups: KuCoin, Binance.US. |
+| BTC/USDT | OKX `BTC-USDT` 4H | UTC days. Added 2026-10-04. |
+| GLD | yfinance `GLD` 1H, resampled to 4H | Regular session only; 4H bars anchored at 09:30 ET. Added 2026-10-04. |
 
 - Indicators: `python tools/indicators.py [SYMBOL ...] [--days N]` (default 120 days) gives EMA20/50, RSI14, ATR14, daily EMA20, swings, structure, base grade long/short, RVOL, and correlations. Driver series come from yfinance daily: `DX-Y.NYB` (DXY), `^TNX` (10Y yield, by level change), `^NDX`, `BTC-USD`. (added: 2026-10-04)
 - 4H data integrity check: OKX native 4H and yfinance 1H->4H match bars rebuilt from 15M/5M exactly (0.000% on all OHLC and reference levels, 4 symbols). Re-run `python tools/verify.py` after any source or pipeline change. (evidence: tools/output/2026-10-04_1856_verify.md; added: 2026-10-04)

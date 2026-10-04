@@ -3,7 +3,7 @@
 ## Identity
 - Instrument: SPDR Gold Shares ETF (NYSE Arca). Tracks gold, in the same direction as XAU/USD. Class notes: `metals.md`, `equities.md`
 - Data source: yfinance `GLD` (added: 2026-10-04)
-- On the tools watchlist: **no**. The tools analyze gold as XAU/USD via XAUT. GLD levels and indicators are not produced yet.
+- On the tools watchlist: **yes** (`GLD`, yfinance 1H -> 4H RTH), added 2026-10-04. Spot gold is analyzed separately as XAU/USD via XAUT.
 
 ## Trading hours
 - Regular session 09:30–16:00 ET, Mon–Fri; no Sunday bars (evidence: yfinance GLD 1H, 120d to 2026-10-02; added: 2026-10-04). Gold trades while GLD is closed, so GLD gaps at the open.
