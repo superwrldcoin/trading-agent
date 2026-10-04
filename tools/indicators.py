@@ -1,8 +1,13 @@
-"""4H indicators, swings, structure, momentum grade, and driver correlations for the watchlist.
+"""Indicators on 15M/1H/4H/1D/1W, 4H swings/structure/grade, alignment score, and driver correlations.
 
-Usage:  python tools/indicators.py [SYMBOL ...] [--days N]     (default: whole watchlist, 120 days)
-Writes a markdown report to tools/output/ and prints it. Definitions follow skills/
-(multi-timeframe-momentum, levels-and-entries, market-structure, macro-and-catalysts).
+Usage:  python tools/indicators.py [SYMBOL ...] [--bars N] [--tf 15M 1H 4H 1D 1W]   (default: whole watchlist, 600 bars)
+Writes a markdown report to tools/output/ and prints it. Data comes from tools/fetch_prices.py.
+Definitions follow skills/ (multi-timeframe-momentum, levels-and-entries, market-structure, macro-and-catalysts).
+
+Per timeframe: EMA 9/21/50/200, EMA20 (grade rule), RSI14, MACD(12,26,9), ATR14, volume trend, RVOL.
+Timeframe state uses the momentum-skill rule: bull = close > EMA20 > EMA50 and RSI > 50; bear = mirror; else mixed.
+Alignment score for a direction = timeframes agreeing minus timeframes opposing (-5..+5). The A/B/C grade is
+still the 4H + daily rule from the skill; the score is extra context.
 """
 from __future__ import annotations
 
@@ -16,10 +21,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import data, levels  # noqa: E402
+from tools import data, fetch_prices, levels  # noqa: E402
 
-DEFAULT_DAYS = 120
 CORR_WINDOW = 30
+DRIVER_PERIOD = "120d"
+EMA_SET = (9, 21, 50, 200)
+VOL_TREND_BAND = 0.10  # SMA20/SMA50 of volume above 1.10 = rising, below 0.90 = falling
 SWING_SIDE = 2
 # EMA/RSI need about 3x their period in bars before values settle.
 SETTLE_4H = 150
@@ -33,8 +40,11 @@ DRIVERS = [
     ("MSFT", "^NDX", False),
     ("MSFT", "^TNX", True),
     ("BCH/USDT", "BTC-USD", False),
+    ("BTC/USDT", "^NDX", False),
+    ("BTC/USDT", "DX-Y.NYB", False),
+    ("GLD", "DX-Y.NYB", False),
 ]
-PAIRS = [("XAU/USD", "SI")]  # watchlist-to-watchlist correlations
+PAIRS = [("XAU/USD", "SI"), ("XAU/USD", "GLD"), ("BCH/USDT", "BTC/USDT")]  # watchlist-to-watchlist correlations
 
 
 # ---------- indicators ----------
@@ -80,6 +90,60 @@ def rsi(close: pd.Series, n: int = 14) -> pd.Series:
 
 def rvol(volume: pd.Series, n: int = 20) -> pd.Series:
     return volume / volume.rolling(n).mean()
+
+
+def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    line = ema(close, fast) - ema(close, slow)
+    sig = ema(line, signal)
+    return pd.DataFrame({"macd": line, "signal": sig, "hist": line - sig})
+
+
+def volume_trend(volume: pd.Series) -> tuple[str, float]:
+    """'rising' / 'falling' / 'flat' from the SMA20/SMA50 volume ratio."""
+    if len(volume) < 50 or volume.tail(50).sum() == 0:
+        return "n/a", float("nan")
+    ratio = float(volume.rolling(20).mean().iloc[-1] / volume.rolling(50).mean().iloc[-1])
+    trend = "rising" if ratio > 1 + VOL_TREND_BAND else "falling" if ratio < 1 - VOL_TREND_BAND else "flat"
+    return trend, ratio
+
+
+def tf_state(close: float, ema20: float, ema50: float, rsi14: float) -> str:
+    if any(np.isnan(x) for x in (ema20, ema50, rsi14)):
+        return "n/a"
+    if close > ema20 > ema50 and rsi14 > 50:
+        return "bull"
+    if close < ema20 < ema50 and rsi14 < 50:
+        return "bear"
+    return "mixed"
+
+
+def alignment_score(states: dict[str, str], direction: str) -> int:
+    want, against = ("bull", "bear") if direction == "long" else ("bear", "bull")
+    return sum(st == want for st in states.values()) - sum(st == against for st in states.values())
+
+
+def timeframe_row(df: pd.DataFrame) -> dict:
+    close = df["close"]
+    m = macd(close)
+    trend, ratio = volume_trend(df["volume"])
+    closed = df[df["confirmed"]] if "confirmed" in df else df.iloc[:-1]
+    rv = rvol(df["volume"])
+    row = {f"ema{n}": float(ema(close, n).iloc[-1]) for n in (*EMA_SET, 20)}
+    row.update(close=float(close.iloc[-1]), rsi14=float(rsi(close).iloc[-1]), atr14=float(atr(df).iloc[-1]),
+               macd=float(m["macd"].iloc[-1]), signal=float(m["signal"].iloc[-1]), hist=float(m["hist"].iloc[-1]),
+               vol_trend=trend, vol_ratio=ratio, bars=len(df),
+               rvol=float(rv.loc[closed.index[-1]]) if len(closed) else float("nan"))
+    row["state"] = tf_state(row["close"], row["ema20"], row["ema50"], row["rsi14"])
+    row["ema200_note"] = ema_quality(len(df), 200)
+    return row
+
+
+def ema_quality(bars: int, n: int) -> str:
+    """'' when settled, 'approx' when the SMA seed still carries 1-10% weight, 'n/a' above 10% or too few bars."""
+    if bars < n:
+        return "n/a"
+    seed_weight = (1 - 2 / (n + 1)) ** (bars - n)
+    return "n/a" if seed_weight > 0.10 else "approx" if seed_weight > 0.01 else ""
 
 
 def swings(df: pd.DataFrame, side: int = SWING_SIDE) -> tuple[pd.Series, pd.Series]:
@@ -227,7 +291,30 @@ def render(symbol: str, src: levels.Source, df: pd.DataFrame, s: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def correlation_section(daily: dict[str, pd.Series], symbols: list[str], days: int) -> str:
+def timeframe_section(frames: dict[str, pd.DataFrame], errors: dict[str, str], ignore_volume: bool) -> tuple[str, dict]:
+    rows = {tf: timeframe_row(frames[tf]) for tf in fetch_prices.TIMEFRAMES if tf in frames and len(frames[tf]) >= 2}
+    lines = ["", "| TF | Bars | Close | EMA9 | EMA21 | EMA50 | EMA200 | RSI14 | MACD / signal / hist | ATR14 | Vol trend | State |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for tf in fetch_prices.TIMEFRAMES:
+        if tf in errors:
+            lines.append(f"| {tf} | FETCH FAILED: {errors[tf]} | | | | | | | | | | |")
+        elif tf in rows:
+            r = rows[tf]
+            note = r["ema200_note"]
+            e200 = "n/a (short history)" if note == "n/a" else _f(r["ema200"]) + (f" ({note})" if note else "")
+            vol = "ignore (token volume)" if ignore_volume else f"{r['vol_trend']} ({_f(r['vol_ratio'])})"
+            lines.append(f"| {tf} | {r['bars']} | {_f(r['close'])} | {_f(r['ema9'])} | {_f(r['ema21'])} | "
+                         f"{_f(r['ema50'])} | {e200} | {_f(r['rsi14'], 1)} | {_f(r['macd'])} / {_f(r['signal'])} / "
+                         f"{_f(r['hist'])} | {_f(r['atr14'])} | {vol} | {r['state']} |")
+    states = {tf: r["state"] for tf, r in rows.items()}
+    scores = {d: alignment_score(states, d) for d in ("long", "short")}
+    lines.append("")
+    lines.append(f"Alignment score ({len(states)} TFs, EMA20/50 + RSI rule): long {scores['long']:+d}, "
+                 f"short {scores['short']:+d} [" + ", ".join(f"{tf} {st}" for tf, st in states.items()) + "]")
+    return "\n".join(lines) + "\n", {"states": states, "scores": scores, "rows": rows}
+
+
+def correlation_section(daily: dict[str, pd.Series], symbols: list[str]) -> str:
     rows = ["## Correlations (daily returns)", "", "| Pair | rho | n |", "|---|---|---|"]
     driver_cache: dict[str, pd.Series | Exception] = {}
     for a, b in PAIRS:
@@ -239,7 +326,7 @@ def correlation_section(daily: dict[str, pd.Series], symbols: list[str], days: i
             continue
         if ticker not in driver_cache:
             try:
-                driver_cache[ticker] = data.fetch_yf_daily_close(ticker, period=f"{days}d")
+                driver_cache[ticker] = data.fetch_yf_daily_close(ticker, period=DRIVER_PERIOD)
             except Exception as exc:
                 driver_cache[ticker] = exc
         drv = driver_cache[ticker]
@@ -255,37 +342,42 @@ def correlation_section(daily: dict[str, pd.Series], symbols: list[str], days: i
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("symbols", nargs="*")
-    parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
+    parser.add_argument("--bars", type=int, default=fetch_prices.DEFAULT_BARS)
+    parser.add_argument("--tf", nargs="+", default=fetch_prices.TIMEFRAMES, choices=fetch_prices.TIMEFRAMES)
     args = parser.parse_args(argv)
     symbols = [s.upper() for s in args.symbols] or list(levels.WATCHLIST)
     unknown = [s for s in symbols if s not in levels.WATCHLIST]
     if unknown:
         print(f"Unknown symbol(s): {', '.join(unknown)}. Watchlist: {', '.join(levels.WATCHLIST)}")
         return 2
+    tfs = list(dict.fromkeys(["4H", *args.tf]))  # 4H always: structure and grade are built on it
 
     levels.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now = pd.Timestamp.now(tz="UTC")
-    start = now - pd.Timedelta(days=args.days)
-    sections, daily = [], {}
+    sections, daily, failed = [], {}, False
     for sym in symbols:
         src = levels.WATCHLIST[sym]
-        try:
-            df = levels.load_4h(src, now, start=start)
-        except Exception as exc:
-            sections.append(f"## {sym}\nDATA ERROR from {src.label}: {exc}\n")
-            continue
-        if len(df) < 2:
-            sections.append(f"## {sym}\nDATA ERROR: not enough candles from {src.label}\n")
+        frames, errors = {}, {}
+        for tf in tfs:
+            try:
+                frames[tf] = fetch_prices.get_ohlcv(sym, tf, bars=args.bars)
+            except fetch_prices.FetchError as exc:
+                errors[tf], failed = str(exc), True
+        df = frames.get("4H")
+        if df is None or len(df) < 2:
+            sections.append(f"## {sym}\nDATA ERROR (4H): {errors.get('4H', 'not enough candles')}\n")
             continue
         s = summarize(df, src.session)
         daily[sym] = s["daily_series"]
-        sections.append(render(sym, src, df, s))
-    sections.append(correlation_section(daily, symbols, args.days))
+        tf_text, _ = timeframe_section(frames, errors, ignore_volume=src.drop_weekend)
+        fetched = ", ".join(f"{tf} {frames[tf].attrs['fetched_at'][:16]}Z" for tf in fetch_prices.TIMEFRAMES if tf in frames)
+        sections.append(render(sym, src, df, s) + tf_text + f"Fetched (UTC): {fetched}\n")
+    sections.append(correlation_section(daily, symbols))
 
-    report = f"# Indicators: generated {now:%Y-%m-%d %H:%M} UTC ({args.days} days)\n\n" + "\n".join(sections)
+    report = f"# Indicators: generated {now:%Y-%m-%d %H:%M} UTC ({args.bars} bars per TF)\n\n" + "\n".join(sections)
     (levels.OUTPUT_DIR / f"{now:%Y-%m-%d_%H%M}_indicators.md").write_text(report, encoding="utf-8")
     print(report)
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

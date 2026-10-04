@@ -119,10 +119,78 @@ def test_correlation_section_reports_fetch_failure(monkeypatch):
         raise RuntimeError("offline")
     monkeypatch.setattr(ind.data, "fetch_yf_daily_close", boom)
     daily = {"BCH/USDT": pd.Series(np.arange(1.0, 40), index=pd.date_range("2026-08-01", periods=39))}
-    out = ind.correlation_section(daily, ["BCH/USDT"], 120)
+    out = ind.correlation_section(daily, ["BCH/USDT"])
     assert "fetch failed: offline" in out
 
 
 def test_main_rejects_unknown_symbol(capsys):
     assert ind.main(["DOGE"]) == 2
     assert "Unknown symbol" in capsys.readouterr().out
+
+
+def test_macd_on_linear_series_is_exact():
+    # EMA(n) of a straight line lags by exactly (n-1)/2, so MACD = 12.5 - 5.5 = 7 and the histogram is 0.
+    m = ind.macd(pd.Series(np.arange(200, dtype=float)))
+    assert m["macd"].iloc[-1] == pytest.approx(7.0)
+    assert m["signal"].iloc[-1] == pytest.approx(7.0)
+    assert m["hist"].iloc[-1] == pytest.approx(0.0)
+    assert np.isnan(m["signal"].iloc[30])  # signal needs 9 MACD values after the 26-bar seed
+
+
+def test_volume_trend():
+    assert ind.volume_trend(pd.Series([1.0] * 30 + [2.0] * 20)) == ("rising", pytest.approx(2 / 1.4))
+    assert ind.volume_trend(pd.Series([2.0] * 30 + [1.0] * 20))[0] == "falling"
+    assert ind.volume_trend(pd.Series([1.0] * 50))[0] == "flat"
+    assert ind.volume_trend(pd.Series([1.0] * 10))[0] == "n/a"
+    assert ind.volume_trend(pd.Series([0.0] * 60))[0] == "n/a"
+
+
+def test_tf_state_and_alignment_score():
+    assert ind.tf_state(110, 105, 100, 60) == "bull"
+    assert ind.tf_state(90, 95, 100, 40) == "bear"
+    assert ind.tf_state(104, 105, 100, 55) == "mixed"
+    assert ind.tf_state(104, 105, np.nan, 55) == "n/a"
+    states = {"15M": "bull", "1H": "bull", "4H": "mixed", "1D": "bear", "1W": "n/a"}
+    assert ind.alignment_score(states, "long") == 1 and ind.alignment_score(states, "short") == -1
+
+
+def test_timeframe_row_and_ema200_warmup():
+    df = bars([c + 1 for c in range(100, 400)], [c - 1 for c in range(100, 400)], closes=list(range(100, 400)))
+    row = ind.timeframe_row(df)
+    assert row["state"] == "bull" and row["bars"] == 300 and row["ema200_note"] == "n/a"  # seed still ~37%
+    assert row["ema9"] > row["ema21"] > row["ema50"] > row["ema200"]
+    assert row["macd"] == pytest.approx(7.0)
+    short = ind.timeframe_row(df.tail(150))
+    assert np.isnan(short["ema200"]) and short["ema200_note"] == "n/a"
+
+
+def test_timeframe_section_shows_failures_and_score():
+    df = bars([c + 1 for c in range(100, 400)], [c - 1 for c in range(100, 400)], closes=list(range(100, 400)))
+    text, info = ind.timeframe_section({"4H": df, "1D": df}, {"1W": "OKX timed out"}, ignore_volume=True)
+    assert "| 1W | FETCH FAILED: OKX timed out" in text
+    assert info["scores"] == {"long": 2, "short": -2}
+    assert "ignore (token volume)" in text
+
+
+def test_main_returns_1_when_a_timeframe_fails(monkeypatch, tmp_path, capsys):
+    df = bars([c + 1 for c in range(100, 400)], [c - 1 for c in range(100, 400)], closes=list(range(100, 400)))
+    df.attrs["fetched_at"] = "2026-10-04T19:00:00+00:00"
+
+    def fake_get(sym, tf, bars):
+        if tf == "1W":
+            raise ind.fetch_prices.FetchError("BTC/USDT 1W: down. Fallback (AGENT.md F2)")
+        return df
+    monkeypatch.setattr(ind.fetch_prices, "get_ohlcv", fake_get)
+    monkeypatch.setattr(ind.levels, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(ind.data, "fetch_yf_daily_close", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("offline")))
+    assert ind.main(["BTC/USDT"]) == 1
+    out = capsys.readouterr().out
+    assert "FETCH FAILED: BTC/USDT 1W" in out and "Alignment score" in out
+
+
+def test_ema_quality_thresholds():
+    assert ind.ema_quality(150, 200) == "n/a"
+    assert ind.ema_quality(220, 200) == "n/a"     # gold weekly: seed weight ~82%
+    assert ind.ema_quality(456, 200) == "approx"  # BTC weekly: ~8%
+    assert ind.ema_quality(600, 200) == "approx"  # ~1.8%
+    assert ind.ema_quality(700, 200) == ""        # < 1%
