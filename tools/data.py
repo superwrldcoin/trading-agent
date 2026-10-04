@@ -64,6 +64,18 @@ def fetch_yf_hourly(ticker: str, period: str = "90d") -> pd.DataFrame:
     return df
 
 
+def fetch_yf_daily_close(ticker: str, period: str = "120d") -> pd.Series:
+    """Daily closes from yfinance, indexed by naive exchange-calendar date."""
+    import yfinance as yf
+
+    hist = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
+    if hist.empty:
+        raise RuntimeError(f"yfinance returned no data for {ticker}")
+    close = hist["Close"]
+    close.index = pd.DatetimeIndex(close.index.date, name="date")
+    return close.rename(ticker)
+
+
 def parse_swissquote_mid(payload: list[dict]) -> float:
     prices = payload[0]["spreadProfilePrices"][0]
     return (prices["bid"] + prices["ask"]) / 2

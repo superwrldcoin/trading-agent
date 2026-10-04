@@ -16,6 +16,7 @@ All keyless. Run `python tools/levels.py [SYMBOL ...]` to fetch 4H candles and r
 | SI | yfinance `SI=F` 1H, resampled to 4H | COMEX silver futures; 4H bars anchored at 18:00 ET session open. |
 | BCH/USDT | OKX `BCH-USDT` 4H | UTC days. Backups: KuCoin, Binance.US. |
 
+- Indicators: `python tools/indicators.py [SYMBOL ...] [--days N]` (default 120 days) gives EMA20/50, RSI14, ATR14, daily EMA20, swings, structure, base grade long/short, RVOL, and correlations. Driver series come from yfinance daily: `DX-Y.NYB` (DXY), `^TNX` (10Y yield, by level change), `^NDX`, `BTC-USD`. (added: 2026-10-04)
 - Verified 2026-10-04 against the user's charts: gold within $0.04, MSFT $0.23, SI $0.03, BCH $0.40. Gold PDH and PWH matched the user's levels within a few dollars.
 - Blocked from this location: Binance (HTTP 451), Bybit (HTTP 403). yfinance has no spot gold (`XAUUSD=X` delisted), and `GC=F` sits about $22 above spot.
 - Day boundaries: crypto uses UTC; spot gold rolls at 17:00 ET; CME rolls at 18:00 ET; equities use the ET calendar date. Weeks run Mon to Sun.

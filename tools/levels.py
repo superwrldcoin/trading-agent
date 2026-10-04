@@ -120,14 +120,17 @@ def history_start(now: pd.Timestamp) -> pd.Timestamp:
     return (first_of_month - pd.DateOffset(months=1)) - pd.Timedelta(days=7)
 
 
-def load_4h(src: Source, now: pd.Timestamp) -> pd.DataFrame:
+def load_4h(src: Source, now: pd.Timestamp, start: pd.Timestamp | None = None) -> pd.DataFrame:
+    """4H candles from `start` (default: history_start(now)) to now."""
+    start = start if start is not None else history_start(now)
     if src.provider == "okx":
-        df = data.fetch_okx_candles(src.instrument, start=history_start(now))
+        df = data.fetch_okx_candles(src.instrument, start=start)
     else:
-        df = resample_4h(data.fetch_yf_hourly(src.instrument), src.session.bar_offset)
+        days = min((now - start).days + 2, 729)  # yfinance caps 1H history at 730 days
+        df = resample_4h(data.fetch_yf_hourly(src.instrument, period=f"{days}d"), src.session.bar_offset)
     if src.drop_weekend:
         df = drop_gold_weekend(df)
-    return df[df.index >= history_start(now)]
+    return df[df.index >= start]
 
 
 def _fmt(x: float | None) -> str:

@@ -35,19 +35,19 @@ EMA_t = α·close_t + (1 − α)·EMA_(t−1),   α = 2 / (n + 1)          (EMA2
 RSI   = 100 − 100 / (1 + RS),   RS = avg_gain_14 / avg_loss_14     (Wilder: avg_t = (13·avg_(t−1) + x_t) / 14)
 ```
 
-**Worked examples** (data as-of the last 4H bar on 2026-10-02/04, from `tools/levels.py`):
+**Worked examples** (`python tools/indicators.py`, 120 days, run 2026-10-04; last bars 2026-10-02 for gold/MSFT, 2026-10-04 16:00 UTC for BCH):
 
 | | XAU/USD (long idea) | MSFT (long) | BCH/USDT (long) |
 |---|---|---|---|
-| 4H close | 4,143.10 | 517.86 | 316.50 |
-| 4H EMA20 / EMA50 | 4,171.65 / 4,210.76 | 508.86 / 503.14 | 314.56 / 312.50 |
-| 4H RSI14 | 38.7 | 62.0 | 53.5 |
-| Daily EMA20 | 4,276.02 | 504.65 | 299.91 |
+| 4H close | 4,143.10 | 517.86 | 316.40 |
+| 4H EMA20 / EMA50 | 4,171.65 / 4,210.65 | 508.84 / 500.46 | 314.55 / 312.50 |
+| 4H RSI14 | 38.7 | 61.6 | 53.4 |
+| Daily EMA20 | 4,267.62 | 503.44 | 299.36 |
 | 4H | **opposed** (close < 20 < 50, RSI < 50) | aligned | aligned |
-| Daily | opposed (4,143 < 4,276) | aligned | aligned |
+| Daily | opposed (4,143 < 4,268) | aligned | aligned |
 | Grade | **C**: counter-trend long | **A** | **A** (then −1 for wide stop → B) |
 
-Gold RSI check: avg gain 4.846, avg loss 7.692 → RS = 0.630 → RSI = 100 − 100 / 1.630 = **38.7**. The user's 4H matrix had gold as a long from the 4,120–4,135 zone, which this skill grades C. The report must say so instead of quietly agreeing.
+Gold's short grade is **A** (the tool grades both sides). Gold RSI check: avg gain 4.846, avg loss 7.692 → RS = 0.630 → RSI = 100 − 100 / 1.630 = **38.7**. The user's 4H matrix had gold as a long from the 4,120–4,135 zone, which this skill grades C. The report must say so instead of quietly agreeing.
 
 ## Output format
 One line per instrument, inside the report's `Grade:` line:
@@ -56,7 +56,7 @@ Grade: C, counter-trend long: 4H opposed (4,143.10 < EMA20 4,171.65 < EMA50 4,21
 ```
 
 ## Common failure modes
-- **EMA warm-up:** an EMA needs about 3× its period in bars to settle. The levels tool fetches about 40 days, which is fine for 4H EMA50 (about 240 bars) but only about 34 daily bars for daily EMA20. Treat daily EMA20 as approximate, and never compute a daily EMA50 from this history.
+- **EMA warm-up:** an EMA needs about 3× its period in bars to settle. `tools/indicators.py` fetches 120 days by default and prints a `Warm-up:` warning below 150 4H bars or 60 sessions. MSFT has only 2 RTH bars a day, so 120 days gives just 164 bars, barely above the threshold. Use `--days 200` if you shorten the default. A short history really does move values: with 40 days, MSFT's EMA50 read 503.14 instead of 500.46.
 - Grading without a direction: the grade only means something relative to the setup's side.
 - Building daily bars from UTC days for gold, silver, or MSFT. Use the session dates the levels tool uses.
 - Reading XAUT weekend bars as momentum. The tool already removes them; don't add them back.
@@ -66,4 +66,4 @@ Grade: C, counter-trend long: 4H opposed (4,143.10 < EMA20 4,171.65 < EMA50 4,21
 - Fewer than 50 bars on 4H (F4): 4H stack `n/a`. Grade from RSI and daily only, capped at B.
 - No direction given (F6): grade both sides and state the assumption.
 - Stale data (F3): grade allowed, but no execution zone.
-- No tool to compute indicators yet: `tools/levels.py` only outputs candles and levels. Until an indicator tool exists, report `Grade: n/a: indicators not computed [MISSING]`. Never estimate RSI or EMA by eye.
+- `tools/indicators.py` failed for a symbol (F2): `Grade: n/a: indicators not computed [MISSING]`. Never estimate RSI or EMA by eye.

@@ -34,17 +34,19 @@ r_t = close_t / close_(t−1) − 1                     (daily)
 ρ   = corr(r_A, r_B) over the last N sessions        (Pearson, N = 30)
 ```
 
-**Worked example:** gold vs silver, daily returns built from the 4H CSVs (XAUT and SI=F), as-of 2026-10-02.
-- ρ = **0.818** over 31 daily returns → strong. Long gold and long silver is effectively **one** metals bet, so combined risk should be counted against the open-risk cap in `risk-and-sizing`.
+**Worked example:** `python tools/indicators.py` (run 2026-10-04, last 30 daily returns):
+- Gold vs silver ρ = **0.84** → strong. Long gold and long silver is effectively **one** metals bet, so combined risk should be counted against the open-risk cap in `risk-and-sizing`.
 - Gold/silver ratio = 4,143.10 / 60.42 = **68.58** (context only, `[CALC]`).
+- Gold vs DXY **−0.43**, gold vs 10Y yield change **−0.49**: the usual inverse signs, but only moderate right now.
+- MSFT vs NDX **0.37**, BCH vs BTC **0.35**: weaker than "typical". That's exactly why the skill measures instead of assuming.
 
-DXY, yields, Nasdaq, and BTC correlations need extra series that `tools/levels.py` doesn't fetch yet. Until it does, report them as `n/a [MISSING]`, not as typical values.
+Driver series (yfinance daily): DXY `DX-Y.NYB`, 10Y yield `^TNX` (compared by level change), Nasdaq-100 `^NDX`, BTC `BTC-USD`. If a fetch fails, the tool prints `n/a (fetch failed)`; report that as `[MISSING]`, never as a typical value.
 
 ## Output format
 ```
 Macro & catalysts:
 - Events <48h: <event, time UTC, source> or "calendar not checked [MISSING]"
-- Correlation: gold/silver ρ 0.82 (30d), treat as one exposure [CALC]
+- Correlation: gold/silver ρ 0.84 (30d), treat as one exposure [CALC]
 - News: none searched (no trigger) | <headline, source, time> [DATA:news]
 ```
 
