@@ -25,7 +25,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import fetch_prices, indicators, levels, vol_check  # noqa: E402
+from tools import fetch_prices, indicators, levels, positions, rules_check, vol_check  # noqa: E402
 from tools import position_calc as pc  # noqa: E402
 
 # ---------- parsing ----------
@@ -312,6 +312,23 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
     grade = "B" if grade == "A" else grade
     out["grade"] = grade
 
+    pos = out["position"]
+    plan = {"symbol": symbol, "side": side, "leverage": leverage,
+            "risk_pct": req["risk_pct"] if req["equity"] else None,
+            "weighted_r": pos["weighted_R"] if pos else None,
+            "has_stop": True if req["stop"] is not None else None,
+            "notional": pos["notional"] if pos and req["equity"] else None,
+            "liq_touch_5d": (out["vol"]["liq_touch"].get(5) or 0) * 100 if out.get("vol") else None,
+            "option_premium": None}
+    try:
+        out["rules"] = rules_check.check(plan, rules_check.load_rules(), positions.load(),
+                                         rules_check.trade_history(), now)
+    except (ValueError, KeyError) as exc:
+        out["rules"] = []
+        flags.append(("warn", f"rules check failed: {exc}"))
+    for r in out["rules"]:
+        if r["result"] == "BREAKS":
+            flags.append(("fail", f"breaks your rule: {r['rule']} ({r['value']} vs your limit {r['limit']})"))
     tips = out["suggestions"] = []
     if s * (liq - stop) >= 0 or abs(stop - liq) < atr14:
         tips.append(f"Leverage <= {out['max_leverage_1atr']:.1f}x keeps liquidation at least 1 ATR beyond this stop.")
@@ -401,6 +418,15 @@ def render(a: dict) -> str:
     order = {"fail": 0, "warn": 1, "info": 2}
     if a["flags"]:
         lines += ["", "Flags:"] + [f"- **{lvl.upper()}**: {msg}" for lvl, msg in sorted(a["flags"], key=lambda f: order[f[0]])]
+    if a.get("rules") is not None:
+        set_rules = [r for r in a["rules"] if r["result"] != "not set"]
+        broken = [r for r in set_rules if r["result"] == "BREAKS"]
+        if not set_rules:
+            lines += ["", "Rules: none set yet (Trading rules block in memory/user-preferences.md)."]
+        else:
+            lines += ["", f"Rules: {len(broken)} broken of {len(set_rules)} set"
+                      + (": " + "; ".join(r["rule"] for r in broken) if broken else "")
+                      + ". Full table: python tools/rules_check.py"]
     if a.get("suggestions"):
         lines += ["", "What would change the verdict [JUDGMENT]:"] + [f"- {x}" for x in a["suggestions"]]
     if a["assumptions"]:

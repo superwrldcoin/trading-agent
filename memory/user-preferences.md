@@ -60,3 +60,22 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - Risk tolerance / max position size: **unknown**
 - Minimum reward:risk to show a setup: **unknown** (skills use a 2.0 default, tagged `[ASSUMPTION]`)
 - Report length / detail beyond the matrix: **unknown**
+
+## Trading rules (you set these)
+<!-- rules -->
+`tools/rules_check.py` checks every plan against this block before analysis. `null` = not set (reported as "not set", never assumed). Edit the numbers yourself; percentages are of account equity.
+```json
+{
+  "max_leverage": {"crypto": null, "precious metals": null, "equities": null},
+  "max_risk_pct_per_trade": null,
+  "max_open_risk_pct": null,
+  "max_theme_gross_pct": null,
+  "max_positions": null,
+  "min_weighted_r": null,
+  "require_stop": null,
+  "max_liq_touch_5d_pct": null,
+  "max_option_premium_pct": null,
+  "loss_cooldown_hours": null,
+  "max_trades_per_day": null
+}
+```
