@@ -11,3 +11,4 @@ tools/output/*
 # private logs (repo is public)
 memory/trades.md
 memory/sessions.md
+memory/positions.json
