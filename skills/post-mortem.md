@@ -13,13 +13,13 @@ Review a closed trade against its original plan. Measure the result in R, separa
 | Exit(s) (price, size, time) | 50% at 322.60, 50% at 309.80 |
 | Stop at entry | 293.64 |
 | Leverage and margin mode | 10x isolated |
-| Thesis (written **before** entry) | "PDL sweep reclaim, range mid → PDH, PWH" |
+| Thesis (written **before** entry, or **recalled**, see below) | "PDL sweep reclaim, range mid → PDH, PWH" |
 | Open / close time (UTC) | |
 | Original report file | `tools/output/<stamp>_levels.md` |
 | Session link (optional) | `S-20261004-1856/BCHUSDT` in `memory/sessions.md` |
 
 ## Procedure
-1. Check the required fields. Anything missing → F1 (see below). Record the trade in `memory/trades.md` (next free `T-NNN`, using the entry format at the top of that file).
+1. Check the required fields. Anything missing → F1 (see below). **Record the trade with the tool**, never by hand: `python tools/log_trade.py --symbol .. --side .. --entry .. --exit .. --size .. --stop .. --leverage .. --opened ".." --closed ".." --thesis ".." [--thesis-recalled] [--t1 ..] [--session ..] [--prob ..]` (options: `--instrument option --kind --strike --expiry --qty --premium-open --premium-close`). It assigns the next `T-NNN`, computes net P&L, R, MAE/MFE and "T1 before stop" from price data, appends to `memory/trades.md`, and updates the linked session's Outcome line.
 2. **Result:** realized R per exit and overall, plus net $ after fees and funding. Use `tools/position_calc.py` with the actual fills to check the numbers.
 3. **Excursions:** MAE (worst price against you) and MFE (best price in your favor) between entry and exit, from the 4H CSV, both in R.
 4. **Thesis review:** did the structure, momentum grade, and levels behave as described? Mark each **held**, **failed**, or **untested**.
@@ -32,6 +32,7 @@ Review a closed trade against its original plan. Measure the result in R, separa
    | held | deviated | execution problem |
    | failed | deviated | review both |
 7. **Lesson candidates:** at most 2, each phrased as a testable rule. Each goes into `journal.md` as a `MEMORY_UPDATE` (`action: add`) citing the trade ID. **Never** propose a playbook entry from one trade (the promotion rule needs 3 trades or a data check).
+   - **Recalled thesis** (written after the fact, e.g. for past trades): lessons are allowed, but each one is marked `(recalled thesis: lower confidence)` in its content, and the thesis review in step 4 says "recalled". When counting toward the 3-trade promotion rule, 2 recalled-thesis trades count as 1.
 8. Check `journal.md` for similar earlier lessons. If this trade makes a total of 3, note "promotion candidate" and list the trade IDs.
 9. **Calibration:** if the trade links to a session entry with `P(T1 before stop)`, record whether T1 came before the stop (1 or 0). Ask the user to update that entry's `Outcome:` line. Once 10 or more closed trades have estimates, report the Brier score and the hit rate per probability bucket (<40%, 40–60%, >60%). A sample under 10 trades is "too few to judge".
 
@@ -49,6 +50,12 @@ Brier        = mean( (p_i − outcome_i)² ),  p as 0..1      (0 = perfect, 0.25
 - Realized R = 0.5 × 0.792 + 0.5 × 0 = **0.40R**
 - Net $ = T1 half +$37.92 (after fees) + break-even half −$0.94 (fees only) = **+$36.98**
 - Labeled: thesis "held to T1, T2 untested". Moving the stop to break-even was part of the plan → "good trade".
+
+## Per-trade workflow (the user's routine)
+1. In an **interactive** session (`cd trading-agent && claude`; the web page and headless agent can't wait for approval), type: `post-mortem: BTC long, entry 98,400, exit 99,500, size 0.2, stop 97,000, 20x, opened 10/01 12:00, closed 10/03 08:00, thesis was "PWH breakout retest" (recalled)`.
+2. The agent runs `log_trade.py` (`trades.md` entry with computed results), then this skill, and proposes `MEMORY_UPDATE` blocks for `journal.md`.
+3. You **approve, edit, or reject** each block. The agent applies only what you approve.
+4. Commit: `git add memory/journal.md && git commit -m "post-mortem BTC long 10/03"`. `trades.md` and `sessions.md` are gitignored (private). Only the lesson in `journal.md` goes to the **public** repo, so keep lessons free of account sizes or anything you don't want public.
 
 ## Output format
 ```
@@ -68,7 +75,7 @@ date:     <YYYY-MM-DD>
 
 ## Common failure modes
 - Judging the trade by P&L alone. A losing trade that followed a sound plan is a good loss.
-- Rewriting the thesis after the fact. Use the version written before entry, or mark the thesis `[MISSING]`.
+- Rewriting the thesis after the fact **without saying so**. A recalled thesis is fine if it's labeled (`--thesis-recalled`); hindsight-edited theses passed off as pre-entry are not.
 - Lessons that can't be tested ("be more patient"). Rephrase them as rules with conditions.
 - Proposing playbook entries from a single trade.
 - Saving price levels as lessons. The protocol forbids it.
