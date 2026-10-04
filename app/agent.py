@@ -7,6 +7,7 @@ read files; it can't ask follow-up questions, so it applies the AGENT.md fallbac
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ ALLOWED_TOOLS = [
     "Read", "Glob", "Grep",
     "Bash(.venv/Scripts/python tools/*.py *)", "Bash(.venv/bin/python tools/*.py *)", "Bash(python tools/*.py *)",
     "Edit(/tools/output/**)",  # Edit rules cover every file-writing tool
+    "WebSearch",  # event calendar / news check (macro-and-catalysts); blocked if settings.json lists it under "ask"
 ]
 
 AGENT_PROMPT = """The user typed this request into the local trading-agent interface:
@@ -41,7 +43,10 @@ apply the AGENT.md fallback rules (F1-F6) and state any assumption in one [ASSUM
    grade, milestone table (include liquidation if leverage was given), Notes, P(T1 before stop) with a
    one-line reason, "What would change this", MEMORY_UPDATE blocks or "Memory: none", and the
    disclaimer once at the end.
-4. Log it with tools/log_entry.py (one entry; use --side none --grade none with a --note if there is
+4. Event check (macro-and-catalysts): use WebSearch for high-impact events in the next 48h that affect this
+   asset, and news if a trigger fired. Cite source and time. If WebSearch is denied, say
+   "calendar not checked [MISSING]" and cap the grade at B.
+5. Log it with tools/log_entry.py (one entry; use --side none --grade none with a --note if there is
    no valid setup). Don't edit any other file.
 """
 
@@ -97,6 +102,32 @@ def agent_env() -> dict:
     return env
 
 
+def parse_result(stdout: str) -> dict | None:
+    """Parse `claude -p --output-format json`. Returns None if stdout isn't that JSON."""
+    try:
+        d = json.loads(stdout)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(d, dict) or "result" not in d:
+        return None
+    denied = sorted({x.get("tool_name", "?") for x in d.get("permission_denials") or []})
+    return {"result": str(d.get("result") or "").strip(), "is_error": bool(d.get("is_error")),
+            "cost_usd": d.get("total_cost_usd"), "turns": d.get("num_turns"), "denied": denied}
+
+
+def footer(meta: dict) -> str:
+    bits = []
+    if meta["cost_usd"] is not None:
+        bits.append(f"cost ${meta['cost_usd']:.2f} in Claude credits")
+    if meta["turns"]:
+        bits.append(f"{meta['turns']} turns")
+    if meta["denied"]:
+        bits.append("denied: " + ", ".join(meta["denied"])
+                    + (" (move WebSearch from \"ask\" to \"allow\" in .claude/settings.json to enable)"
+                       if "WebSearch" in meta["denied"] else ""))
+    return ("\n\n---\n_Full agent run: " + "; ".join(bits) + "._\n") if bits else ""
+
+
 def claude_path() -> str | None:
     return shutil.which("claude")
 
@@ -107,7 +138,7 @@ def run_agent(text: str, timeout: int = AGENT_TIMEOUT) -> dict:
     if not exe:
         return {"ok": False, "seconds": 0, "markdown": "**Claude Code CLI not found.** Install it (`npm i -g "
                 "@anthropic-ai/claude-code` or the native installer) and log in once with `claude`, then retry."}
-    cmd = [exe, "-p", build_prompt(text), "--output-format", "text", "--allowedTools", *ALLOWED_TOOLS]
+    cmd = [exe, "-p", build_prompt(text), "--output-format", "json", "--allowedTools", *ALLOWED_TOOLS]
     t0 = time.time()
     try:
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
@@ -115,7 +146,13 @@ def run_agent(text: str, timeout: int = AGENT_TIMEOUT) -> dict:
     except subprocess.TimeoutExpired:
         return {"ok": False, "seconds": timeout, "markdown": f"**Agent timed out after {timeout}s.** Try the quick check."}
     out = (proc.stdout or "").strip()
-    if proc.returncode != 0 or not out:
+    meta = parse_result(out)
+    if meta and not meta["is_error"] and meta["result"]:
+        return {"ok": True, "markdown": meta["result"] + footer(meta), "seconds": round(time.time() - t0, 1),
+                "cost_usd": meta["cost_usd"], "turns": meta["turns"], "denied": meta["denied"]}
+    if meta:
+        out = meta["result"] or out
+    if proc.returncode != 0 or not out or (meta and meta["is_error"]):
         err = (proc.stderr or "").strip()[-1500:]
         secs = round(time.time() - t0, 1)
         both = f"{out}\n{err}".lower()

@@ -92,7 +92,7 @@ async function ask(kind){
     const j = await r.json();
     $("#out").style.display = "block";
     $("#out").innerHTML = md(j.markdown || ("**Error:** " + (j.error || r.status)));
-    $("#status").textContent = (j.ok ? "Done" : "Finished with errors") + (j.seconds!==undefined ? ` in ${j.seconds}s` : "");
+    $("#status").textContent = (j.ok ? "Done" : "Finished with errors") + (j.seconds!==undefined ? ` in ${j.seconds}s` : "") + (j.cost_usd!=null ? ` · cost $${Number(j.cost_usd).toFixed(2)}` : (kind==="quick" ? " · free" : ""));
   } catch(e){ $("#status").textContent = "Request failed: " + e; }
   finally { clearInterval(timer); btns.forEach(b=>b.disabled=false); }
 }

@@ -143,3 +143,30 @@ def test_run_agent_passes_clean_env(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="REPORT", stderr="")
     monkeypatch.setattr(agent.subprocess, "run", fake_run)
     assert agent.run_agent("BTC long")["ok"] and "ANTHROPIC_API_KEY" not in seen["env"]
+
+
+def test_run_agent_parses_json_cost_and_denials(monkeypatch):
+    payload = {"type": "result", "subtype": "success", "is_error": False, "result": "## REPORT",
+               "total_cost_usd": 0.4321, "num_turns": 9,
+               "permission_denials": [{"tool_name": "WebSearch"}, {"tool_name": "WebSearch"}]}
+    monkeypatch.setattr(agent, "claude_path", lambda: "claude")
+    monkeypatch.setattr(agent.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(
+        cmd, 0, stdout=json.dumps(payload), stderr="Ignoring 11 permissions.allow entries: not been trusted"))
+    res = agent.run_agent("BTC long")
+    assert res["ok"] and res["markdown"].startswith("## REPORT")
+    assert res["cost_usd"] == 0.4321 and res["denied"] == ["WebSearch"]
+    assert "cost $0.43 in Claude credits" in res["markdown"] and "move WebSearch" in res["markdown"]
+
+
+def test_run_agent_json_error_reports_credit(monkeypatch):
+    payload = {"type": "result", "is_error": True, "result": "Credit balance is too low", "total_cost_usd": 0}
+    monkeypatch.setattr(agent, "claude_path", lambda: "claude")
+    monkeypatch.setattr(agent.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(
+        cmd, 1, stdout=json.dumps(payload), stderr=""))
+    res = agent.run_agent("BTC long")
+    assert not res["ok"] and "no credit" in res["markdown"]
+
+
+def test_prompt_includes_event_check_and_websearch_allowed():
+    assert "WebSearch" in agent.ALLOWED_TOOLS
+    assert "Event check" in agent.build_prompt("BTC long")
