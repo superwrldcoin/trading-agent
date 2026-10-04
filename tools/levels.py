@@ -139,6 +139,20 @@ def _fmt(x: float | None) -> str:
     return "n/a" if x is None else f"{x:,.2f}"
 
 
+LEVEL_ROWS = [("PDH", "day"), ("PDL", "day"), ("PWH", "week"), ("PWL", "week"), ("PMthH", "month"), ("PMthL", "month")]
+
+
+def distance_rows(lv: dict, last: float, atr14: float | None) -> list[dict]:
+    """Each reference level with its distance from the last price, in % and in ATR, sorted high to low."""
+    rows = []
+    for key, period in LEVEL_ROWS:
+        value = lv[key]
+        rows.append({"level": key, "value": value, "period": lv[period],
+                     "dist_pct": None if value is None else (value / last - 1) * 100,
+                     "dist_atr": None if value is None or not atr14 else (value - last) / atr14})
+    return sorted(rows, key=lambda r: -(r["value"] if r["value"] is not None else float("-inf")))
+
+
 def analyze(symbol: str, src: Source, now: pd.Timestamp, stamp: str) -> str:
     try:
         df = load_4h(src, now)
@@ -168,19 +182,17 @@ def analyze(symbol: str, src: Source, now: pd.Timestamp, stamp: str) -> str:
                          f"(proxy premium {prem:+.3f}%){warn}")
         except Exception as exc:
             lines.append(f"Spot check: unavailable ({exc})")
-    lines += [
-        "",
-        "| Level | Value | Period |",
-        "|---|---|---|",
-        f"| PDH | {_fmt(lv['PDH'])} | {lv['day']} |",
-        f"| PDL | {_fmt(lv['PDL'])} | {lv['day']} |",
-        f"| PWH | {_fmt(lv['PWH'])} | {lv['week']} |",
-        f"| PWL | {_fmt(lv['PWL'])} | {lv['week']} |",
-        f"| PMthH | {_fmt(lv['PMthH'])} | {lv['month']} |",
-        f"| PMthL | {_fmt(lv['PMthL'])} | {lv['month']} |",
-        "",
-    ]
-    return "\n".join(lines)
+    else:
+        lines.append("Spot check: not applicable (only XAU/USD has a spot cross-check)")
+    from tools import indicators  # local import: indicators imports this module
+    atr14 = float(indicators.atr(df).iloc[-1]) if len(df) > 14 else None
+    lines += [f"ATR14 (4H): {_fmt(atr14)}", "",
+              "| Level | Value | Period | Dist from last | ATR away |", "|---|---|---|---|---|"]
+    for r in distance_rows(lv, last, atr14):
+        dist = "n/a" if r["dist_pct"] is None else f"{r['dist_pct']:+.2f}%"
+        away = "n/a" if r["dist_atr"] is None else f"{r['dist_atr']:+.2f}"
+        lines.append(f"| {r['level']} | {_fmt(r['value'])} | {r['period']} | {dist} | {away} |")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str]) -> int:

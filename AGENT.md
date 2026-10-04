@@ -36,6 +36,7 @@ Run tools from the repo root with the venv Python (`.venv/Scripts/python tools/<
 - Every number comes from fetched data or a computation run this session, never from memory or training data.
 - If data is missing or stale, say so. Don't fill gaps with estimates presented as facts.
 - Separate **observed** (data) from **interpreted** (analysis) from **uncertain**.
+- **No ad-hoc code.** Only run `tools/*.py`. No `python -c`, heredocs, piped scripts, or `curl`. If a number isn't produced by a tool, either do simple arithmetic in the report with the formula shown (`[CALC]`), or say the tool doesn't cover it and suggest adding it. Distances to levels come from `levels.py`, position math from `position_calc.py`.
 
 ## Fallback rules (missing or bad inputs)
 Apply these in order whenever an input a skill needs is missing, stale, or conflicting. Mark every affected line with `[MISSING]` or `[ASSUMPTION]`.

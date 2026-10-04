@@ -86,3 +86,21 @@ def test_history_start_covers_previous_month():
 def test_main_rejects_unknown_symbol(capsys):
     assert levels.main(["DOGE"]) == 2
     assert "Unknown symbol" in capsys.readouterr().out
+
+
+def test_distance_rows_sorted_with_pct_and_atr():
+    lv = {"PDH": 383.70, "PDL": 380.36, "day": "2026-10-01", "PWH": 400.78, "PWL": 389.05, "week": "w",
+          "PMthH": 413.54, "PMthL": 376.88, "month": "2026-09"}
+    rows = levels.distance_rows(lv, last=380.18, atr14=4.11)
+    assert [r["level"] for r in rows] == ["PMthH", "PWH", "PWL", "PDH", "PDL", "PMthL"]
+    pmthl = rows[-1]
+    assert pmthl["dist_pct"] == pytest.approx(-0.8680, abs=1e-3)
+    assert pmthl["dist_atr"] == pytest.approx(-0.80, abs=0.01)  # matches the GLD acceptance-test report
+
+
+def test_distance_rows_handles_missing():
+    lv = {"PDH": None, "PDL": None, "day": None, "PWH": 10.0, "PWL": 9.0, "week": "w",
+          "PMthH": None, "PMthL": None, "month": None}
+    rows = levels.distance_rows(lv, last=9.5, atr14=None)
+    assert rows[0]["level"] == "PWH" and rows[0]["dist_atr"] is None
+    assert rows[-1]["value"] is None and rows[-1]["dist_pct"] is None

@@ -49,6 +49,8 @@ def validate(e: dict) -> None:
             raise ValueError("a 'none' side (no valid setup) must have grade 'none'")
         if not e.get("note"):
             raise ValueError("no-setup entries need --note with the reason")
+        if e.get("base_grade") not in (None, "A", "B", "C"):
+            raise ValueError("base grade must be A, B or C")
         return
     if e["grade"] == "none":
         raise ValueError("a setup needs a grade (A/B/C)")
@@ -69,6 +71,9 @@ def format_entry(e: dict) -> str:
     head = f"### {e['id']} | {e['symbol']} " + (f"{e['side']} | grade {e['grade']}" if e["side"] != "none"
                                                   else "| no valid setup")
     lines = [head, f"- Logged: {e['logged_at']}", f"- Request: \"{e['request']}\""]
+    if e["side"] == "none" and e.get("base_grade"):
+        lines.append(f"- Base grade of the favored side (no setup): {e['base_grade']}"
+                     + (f" {e['base_side']}" if e.get("base_side") else ""))
     if e["side"] != "none":
         low, high = sorted(e["zone"])
         lines += [f"- Zone: {f(low)}-{f(high)} | Stop: {f(e['stop'])} | Targets: "
@@ -116,11 +121,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--tools", nargs="+")
     ap.add_argument("--report")
     ap.add_argument("--note")
+    ap.add_argument("--base-grade", choices=["A", "B", "C"], help="no-setup entries: grade of the favored side")
+    ap.add_argument("--base-side", choices=["long", "short"], help="no-setup entries: the favored side")
     ap.add_argument("--session", help="reuse a session ID to group instruments")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     entry = {k: getattr(a, k) for k in ("request", "symbol", "side", "grade", "zone", "stop", "targets", "prob",
-                                        "tools", "report", "note", "session")}
+                                        "tools", "report", "note", "session", "base_grade", "base_side")}
     try:
         e = append(entry)
     except ValueError as exc:

@@ -13,12 +13,17 @@ Build the execution zone, the pyramid of entry tranches, the ATR-based invalidat
 **Tools:** swings, ATR, and the 4H structure come from `python tools/indicators.py`. Tranches, blended entry, R per target, and stop width come from `python tools/position_calc.py --zone LOW HIGH --stop .. --targets .. --atr ..`.
 
 1. **Swing points:** a 4H swing high is a bar whose high is above the 2 bars before it and the 2 after it. A swing low is the mirror image. A swing is only confirmed after the 2 bars to its right have closed, so the last 2 bars can never be swings.
-2. **Zone anchor:** the reference level or swing in the direction of the pullback (long: the nearest support at or below price that `market-structure` supports).
-3. **Execution zone:** anchor to anchor ± 0.5 × ATR(14), stretching into the trade (long: anchor up to anchor + 0.5 ATR).
-4. **Pyramid tranches:** split the planned size 30/30/40 across zone top, zone middle, and zone bottom. The largest piece sits at the best price. Blended entry is the weighted average. Risk is always sized as if **all** tranches fill.
+2. **Zone anchor:** the reference level or swing that price pulls back to:
+   - **Long:** the nearest support **at or below** price. **Short:** the nearest resistance **at or above** price.
+   - **Confluence wins over nearness:** if a confluence (2+ reference levels, swings, EMAs or VWAPs within 0.5 ATR of each other) sits within 1.5 ATR beyond the nearest level, anchor at the confluence instead. If you're unsure, run `position_calc.py` on both and report the one that passes. If both fail, report "No valid setup" and show both results.
+   - Only build the side `market-structure` and the conviction score support.
+3. **Execution zone:** from the anchor, 0.5 × ATR(14) back toward current price. Long: anchor up to anchor + 0.5 ATR. Short: anchor down to anchor − 0.5 ATR.
+4. **Pyramid tranches:** 30% at the first-touch edge of the zone, 30% at the middle, 40% at the far edge, so the largest piece sits at the best price. Long: 30% top, 30% middle, 40% bottom. Short: 30% bottom, 30% middle, 40% top. `position_calc.py --zone` does this for both sides. Blended entry is the weighted average. Risk is always sized as if **all** tranches fill.
 5. **Invalidation (stop):** beyond the most recent confirmed swing that the setup depends on, plus a 0.5 × ATR buffer. It triggers on a 4H **close**, not a wick (user preference).
 6. **Stop width check:** if (entry − stop) > 3 ATR, flag "wide stop" and lower the grade one letter. If it's > 4 ATR, there's no valid setup.
-7. **Targets:** the next reference levels in the trade direction, nearest first. Combine levels within 0.5 ATR of each other into one target. Use 2 or 3 targets and assign the user's scale-out split.
+7. **Targets:** the next reference levels in the trade direction, nearest first. Combine levels within 0.5 ATR of each other into one target. Use up to 3 targets with the user's scale-out split (40/40/20 for three, 50/50 for two).
+   - **Only one level exists:** 100% at T1. Never invent a second target to meet the R:R minimum. ATR-multiple or "price discovery" runners are not data-backed. They may be mentioned in Notes as `[JUDGMENT]`, but they are **never** included in weighted R.
+   - **No level exists in the trade direction:** no target means no R:R, so the result is "No valid setup: no reference level beyond entry".
 8. **Add-on pyramid (optional, in profit only):** after T1 is hit and the stop is at break-even, an add of ≤ 50% of the original size may be shown at a retest of the broken level. Never add to a losing position.
 
 ## Formulas

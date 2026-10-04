@@ -79,3 +79,13 @@ def test_cli(monkeypatch, tmp_path, capsys):
     assert "Logged S-TEST/BTCUSDT" in capsys.readouterr().out
     assert le.main(args) == 2  # duplicate
     assert "already logged" in capsys.readouterr().out
+
+
+def test_no_setup_records_base_grade(tmp_path):
+    path = tmp_path / "s.md"
+    le.append(setup_entry(symbol="GLD", side="none", grade="none", zone=None, stop=None, targets=None, prob=None,
+                          note="short fails R:R 1.52 < 2.0", base_grade="B", base_side="short"), path=path, now=NOW)
+    assert "- Base grade of the favored side (no setup): B short" in path.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="base grade must be"):
+        le.append(setup_entry(symbol="MSFT", side="none", grade="none", note="x", base_grade="D"),
+                  path=path, now=NOW)
