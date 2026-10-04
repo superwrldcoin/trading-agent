@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit(/memory/**)",
+      "Edit(/tools/output/**)",
+      "Bash(python tools/*.py)",
+      "Bash(python tools/*.py *)",
+      "Bash(.venv/Scripts/python tools/*.py)",
+      "Bash(.venv/Scripts/python tools/*.py *)",
+      "PowerShell(python tools/*.py)",
+      "PowerShell(python tools/*.py *)",
+      "PowerShell(.venv/Scripts/python tools/*.py)",
+      "PowerShell(.venv/Scripts/python tools/*.py *)"
+    ],
+    "ask": [
+      "Bash(pip *)",
+      "Bash(git push *)",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "deny": [
+      "Edit(/AGENT.md)",
+      "Edit(/skills/**)",
+      "Edit(/.claude/**)",
+
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(del *)",
+      "Bash(shred *)",
+      "Bash(find * -delete*)",
+      "PowerShell(rm *)",
+      "PowerShell(del *)",
+      "PowerShell(rmdir *)",
+      "PowerShell(Remove-Item *)",
+
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(nc *)",
+      "Bash(ncat *)",
+      "Bash(netcat *)",
+      "Bash(telnet *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(sftp *)",
+      "Bash(ftp *)",
+      "Bash(rsync *)",
+      "Bash(python -c *)",
+      "Bash(.venv/Scripts/python -c *)",
+      "PowerShell(curl *)",
+      "PowerShell(wget *)",
+      "PowerShell(Invoke-WebRequest *)",
+      "PowerShell(iwr *)",
+      "PowerShell(Invoke-RestMethod *)",
+      "PowerShell(irm *)",
+      "PowerShell(Start-BitsTransfer *)",
+      "PowerShell(python -c *)"
+    ]
+  }
+}
