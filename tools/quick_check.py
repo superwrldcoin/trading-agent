@@ -199,6 +199,9 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
            "fetched_at": price_df.attrs.get("fetched_at"), "last_bar": f"{price_df.index[-1]:%Y-%m-%d %H:%M} UTC",
            "market_open": market_open(symbol, now), "errors": errors, "flags": [], "assumptions": []}
     flags, assume = out["flags"], out["assumptions"]
+    if not src.verified:
+        flags.append(("warn", f"{symbol} is not verified in memory/universe.yaml: run `python tools/universe.py verify` "
+                              "before trusting this analysis"))
     if src.drop_weekend:
         assume.append("XAU/USD priced from OKX XAUT-USDT (Tether Gold proxy)")
     if not out["market_open"]:
@@ -412,6 +415,24 @@ def render(a: dict) -> str:
                       f"Historically a move that size against a {a['side']} came within 1d / 3d / 5d / 10d on "
                       f"{p(1)} / {p(3)} / {p(5)} / {p(10)} of days (last {v['lookback_days']} days, not a forecast). "
                       f"Leverage that kept 5-day odds <= 5%: {_f(v['safe_leverage_5d'], 1)}x [CALC]"]
+    ctx = a.get("context")
+    if ctx:
+        for r in ctx.get("ratios", []):
+            if r.get("value") is not None:
+                lines.append(f"Ratio {r['name']} ({r['formula']}): {r['value']:,.4f}, {r['pct_vs_sma']:+.2f}% vs "
+                             f"50d SMA, 20d {r['chg_20d_pct']:+.2f}%, {r['trend']} [CALC]")
+        fd = (ctx.get("feeds") or {}).get("feeds", {})
+        bits = []
+        if "funding_rate" in fd and "error" not in fd["funding_rate"]:
+            bits.append(f"funding {fd['funding_rate']['rate_8h'] * 100:+.4f}%/8h ({fd['funding_rate']['reading']})")
+        if "long_short_ratio" in fd and "error" not in fd["long_short_ratio"]:
+            bits.append(f"long/short {fd['long_short_ratio']['ratio']:.2f} ({fd['long_short_ratio']['reading']})")
+        if "open_interest" in fd and "error" not in fd["open_interest"]:
+            bits.append(f"OI ${fd['open_interest']['oi_usd'] / 1e6:,.0f}M")
+        if "btc_dominance" in fd and "error" not in fd["btc_dominance"]:
+            bits.append(f"BTC dominance {fd['btc_dominance']['btc_dominance_pct']:.1f}%")
+        if bits:
+            lines.append("Positioning (context, not graded): " + "; ".join(bits) + " [DATA]")
     lv = a["levels"]
     lines += ["", "Reference levels: " + ", ".join(f"{k} {_f(lv[k])}" for k in ("PDH", "PDL", "PWH", "PWL", "PMthH", "PMthL")),
               "VWAP: " + ", ".join(f"{k} {_f(a['vwap'][k])}" for k in ("session", "week", "month"))
@@ -448,8 +469,32 @@ def run(text: str, equity: float | None = None, risk_pct: float | None = None,
         req["risk_pct"] = 1.0
     cls = "crypto" if levels.WATCHLIST[req["symbol"]].session is levels.CRYPTO else "other"
     frames, errors = fetch_frames(req["symbol"])
-    return analyze(req, frames, errors, now or pd.Timestamp.now(tz="UTC"),
-                   mmr if mmr is not None else DEFAULTS[cls]["mmr"], fee if fee is not None else DEFAULTS[cls]["fee"])
+    out = analyze(req, frames, errors, now or pd.Timestamp.now(tz="UTC"),
+                  mmr if mmr is not None else DEFAULTS[cls]["mmr"], fee if fee is not None else DEFAULTS[cls]["fee"])
+    out["context"] = fetch_context(req["symbol"])
+    return out
+
+
+def fetch_context(symbol: str) -> dict:
+    """Ratios and crypto positioning for the symbol (from memory/universe.yaml). Soft-fails: context only."""
+    from tools import crypto_feeds, ratios
+    ctx = {"ratios": [], "feeds": None, "errors": []}
+    try:
+        ctx["ratios"] = ratios.run(for_id=symbol)
+    except Exception as exc:
+        ctx["errors"].append(f"ratios: {str(exc)[:80]}")
+    if universe_class(symbol) == "crypto":
+        try:
+            ctx["feeds"] = crypto_feeds.run(symbol)
+        except Exception as exc:
+            ctx["errors"].append(f"crypto feeds: {str(exc)[:80]}")
+    return ctx
+
+
+def universe_class(symbol: str) -> str | None:
+    from tools import universe
+    e = universe.core_by_id().get(symbol)
+    return e.get("asset_class") if e else None
 
 
 def _jsonable(o):

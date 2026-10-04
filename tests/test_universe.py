@@ -46,7 +46,10 @@ def test_set_status_preserves_comments(tmp_path):
     assert tnx["verified"] is True and str(tnx["last_verified"]) == "2026-10-05" and "verify_note" not in tnx
     gld = next(c for c in u["core"] if c["symbol"] == "GLD")
     assert gld["verified"] is False and gld["verify_note"] == "stale"
-    assert len(text.splitlines()) - len(before.splitlines()) == 3            # last_verified x2 + one note
+    for sym in ("^TNX", "GLD"):                                              # re-runs never duplicate lines
+        block = text.split(f'- symbol: "{sym}"')[1].split("- symbol:")[0]
+        assert block.count("verified:") - block.count("last_verified:") == 1 and block.count("last_verified:") == 1
+    assert before.count("# Single source of truth") == 1
     assert not universe.set_status("NOPE", True, "2026-10-05", None, p)
 
 

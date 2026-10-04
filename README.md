@@ -5,8 +5,8 @@ previous day/week/month liquidity levels (PDH/PDL, PWH/PWL, PMthH/PMthL), grades
 **EMA + VWAP**, and checks position math (R:R, liquidation, sizing), all from live public data.
 It never places trades and never asks for or stores API keys.
 
-Watchlist: BTC/USDT, BCH/USDT (OKX), XAU/USD (OKX Tether Gold proxy, cross-checked against spot),
-SI (COMEX silver futures), GLD, MSFT (yfinance).
+Watchlist (from `memory/universe.yaml`): BTC/USDT, BCH/USDT (OKX, yfinance backup), XAU/USD (OKX Tether Gold proxy,
+cross-checked against spot), SI (COMEX silver futures), SLV, GLD, MSFT (yfinance), plus 5 macro drivers and 8 pair instruments.
 
 > Not financial advice. Outputs are analysis; you make and execute every decision.
 
@@ -68,7 +68,8 @@ pytest                        # all tests are offline
 | `CLAUDE.md`, `AGENT.md` | Agent rules: role, write scope, tools and fallbacks, session workflow, report format |
 | `skills/` | Procedures with worked examples: report-format, levels-and-entries, multi-timeframe-momentum (EMA + VWAP conviction), market-structure, risk-and-sizing, leveraged-position-math, leverage-volatility-check, rules-check, trade-plan, portfolio-exposure, stress-test, options-greeks, bear-case-review, data-ingest, macro-and-catalysts, post-mortem |
 | `memory/` | Durable facts (`core.md`), preferences, playbook/journal (memory protocol), per-market notes. `trades.md` and `sessions.md` are private and gitignored |
-| `tools/` | `quick_check.py`, `fetch_prices.py`, `levels.py`, `indicators.py`, `position_calc.py`, `vol_check.py`, `trade_plan.py`, `rules_check.py`, `positions.py`, `portfolio.py`, `options.py` (+ `options_math.py`), `log_trade.py`, `log_entry.py`, `verify.py` |
+| `memory/universe.yaml` | Single source of truth for symbols, feeds, drivers, pairs, ratios; `tools/universe.py verify` checks every entry |
+| `tools/` | `universe.py`, `ratios.py`, `crypto_feeds.py`, `quick_check.py`, `fetch_prices.py`, `levels.py`, `indicators.py`, `position_calc.py`, `vol_check.py`, `trade_plan.py`, `rules_check.py`, `positions.py`, `portfolio.py`, `options.py` (+ `options_math.py`), `log_trade.py`, `log_entry.py`, `verify.py` |
 | `app/` | Local web server, terminal entry point, headless agent runner |
 | `tests/` | pytest suite (network mocked) |
 

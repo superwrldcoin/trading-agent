@@ -18,6 +18,11 @@ Flag scheduled events and cross-market drivers that could invalidate a technical
 
 The signs are typical relationships, not rules. Always measure the current correlation instead of assuming it.
 
+**Source of truth:** the drivers, pairs and ratios for each instrument live in `memory/universe.yaml` (its `context` map), not in this table. `tools/indicators.py` correlates each core instrument with its listed drivers and pairs (30-day daily returns; `^TNX`, `^VIX` and the FRED real yield `DFII10` by change in level). Extra context per instrument:
+- **Ratios** (`python tools/ratios.py --for <SYM>`): e.g. gold/silver for SI, SLV and GLD; BCH/BTC for BCH; MSFT/QQQ for MSFT; GDX/GLD for gold. A ratio trending against the setup (e.g. BCH/BTC falling while you're long BCH) goes in the bear case.
+- **Crypto positioning** (`python tools/crypto_feeds.py <SYM>`): funding, open interest, long/short ratio, BTC dominance. Crowded positioning (funding ≥ 0.05%/8h or long/short ≥ 2) argues against chasing in the crowded direction. Context only, never part of the grade.
+- **VIX regime:** a VIX spike coincides with leveraged-asset drawdowns. Mention it when it's rising sharply on the day.
+
 ## Procedure
 1. **Event check:** list the high-impact events within 48h of the report for each instrument's drivers. Within **24h** → add a `Catalyst risk` note and lower the grade one letter. Within **4h** → no execution zone; report "wait for event".
 2. **Correlation check:** correlation of daily returns over the last 30 sessions. |ρ| ≥ 0.7 counts as strong: treat the two as one exposure when the user holds both.
