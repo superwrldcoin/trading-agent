@@ -11,6 +11,8 @@ Turn a plan (entry, stop, targets, size) into leveraged-position numbers: margin
 - ATR(14) on 4H
 
 ## Procedure
+**Tool:** `python tools/position_calc.py` implements every formula below (its tests include this skill's worked example). Run it; don't do the math by hand. The steps describe what it computes and how to read it.
+
 1. Confirm the inputs. Any missing exchange parameter → F1 (ask). If the user wants a rough figure anyway, use the placeholder and tag it `[ASSUMPTION]`.
 2. Notional = units × entry. Margin = notional / leverage. Effective leverage = notional / equity.
 3. Liquidation price (isolated, linear USDT contract) from the formula below.

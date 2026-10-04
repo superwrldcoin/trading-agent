@@ -8,11 +8,18 @@ Decide whether momentum on the daily (bias) and 4H (setup) timeframes agrees wit
 - Daily closes, built from the 4H bars by session date
 - Trade direction (long or short), taken from the setup in `levels-and-entries`
 
-## Indicators (fixed, nothing else)
+## Indicators
+**Grade inputs (fixed, nothing else changes the grade):**
 | Indicator | Settings | Used on |
 |---|---|---|
 | EMA | 20 and 50, on close | 4H (stack); daily (EMA20 only, see failure modes) |
 | RSI | 14, Wilder smoothing | 4H |
+
+**Context only** (`tools/indicators.py` reports these on 15M, 1H, 4H, 1D, 1W; the user chose to keep the grade rules unchanged):
+- EMA 9 / 21 / 50 / 200, MACD (12, 26, 9), ATR14, volume trend (SMA20/SMA50 of volume: > 1.10 rising, < 0.90 falling)
+- **Timeframe state:** bull = close > EMA20 > EMA50 and RSI > 50; bear = mirror; else mixed
+- **Alignment score** for a direction = timeframes agreeing − timeframes opposing (−5..+5). Report it next to the grade. It doesn't change the grade, but a score ≤ 0 in the trade's direction belongs in Notes
+- EMA200 shows `approx` or `n/a` when history is too short (the SMA seed still carries > 1% / > 10% of the weight). Never use an `n/a` EMA200 as a level
 
 ## Procedure
 1. Compute 4H EMA20, EMA50, and RSI14, plus daily EMA20.
@@ -35,7 +42,7 @@ EMA_t = α·close_t + (1 − α)·EMA_(t−1),   α = 2 / (n + 1)          (EMA2
 RSI   = 100 − 100 / (1 + RS),   RS = avg_gain_14 / avg_loss_14     (Wilder: avg_t = (13·avg_(t−1) + x_t) / 14)
 ```
 
-**Worked examples** (`python tools/indicators.py`, 120 days, run 2026-10-04; last bars 2026-10-02 for gold/MSFT, 2026-10-04 16:00 UTC for BCH):
+**Worked examples** (`python tools/indicators.py`, 120-day version, run 2026-10-04; last bars 2026-10-02 for gold/MSFT, 2026-10-04 16:00 UTC for BCH):
 
 | | XAU/USD (long idea) | MSFT (long) | BCH/USDT (long) |
 |---|---|---|---|
@@ -56,7 +63,7 @@ Grade: C, counter-trend long: 4H opposed (4,143.10 < EMA20 4,171.65 < EMA50 4,21
 ```
 
 ## Common failure modes
-- **EMA warm-up:** an EMA needs about 3× its period in bars to settle. `tools/indicators.py` fetches 120 days by default and prints a `Warm-up:` warning below 150 4H bars or 60 sessions. MSFT has only 2 RTH bars a day, so 120 days gives just 164 bars, barely above the threshold. Use `--days 200` if you shorten the default. A short history really does move values: with 40 days, MSFT's EMA50 read 503.14 instead of 500.46.
+- **EMA warm-up:** an EMA needs about 3× its period in bars to settle. `tools/indicators.py` now fetches 700 bars per timeframe (via `tools/fetch_prices.py`) and prints a `Warm-up:` warning below 150 4H bars or 60 sessions. A short history really does move values: with 40 days, MSFT's EMA50 read 503.14 instead of 500.46. The worked examples above came from the earlier 120-day run, so the current tool output can differ by a few cents.
 - Grading without a direction: the grade only means something relative to the setup's side.
 - Building daily bars from UTC days for gold, silver, or MSFT. Use the session dates the levels tool uses.
 - Reading XAUT weekend bars as momentum. The tool already removes them; don't add them back.

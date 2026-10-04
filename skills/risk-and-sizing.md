@@ -22,6 +22,8 @@ Size a position so the loss at the stop, including fees, equals a set percentage
 Defaults are shown in the report as `[ASSUMPTION]` until `user-preferences.md` sets them.
 
 ## Procedure
+**Tool:** `python tools/position_calc.py ... --equity <E> --risk-pct <r>` sizes the position with fees included and reports weighted R and the threshold flags (T1 < 0.5R, weighted R < 2.0, wide stop).
+
 1. Get equity and risk %. If either is missing → F1.
 2. Per-unit risk = |entry − stop| plus round-trip fees per unit.
 3. Units = risk $ / per-unit risk. Notional = units × entry.

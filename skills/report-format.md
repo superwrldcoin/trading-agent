@@ -14,10 +14,11 @@ Turn the analysis into the report the user reads. Each instrument gets one miles
 2. For each instrument, in watchlist order:
    1. Header: `## <SYMBOL>: 4H, as-of <last bar UTC>`.
    2. `Data:` line, tagged `[DATA]`.
-   3. `Structure:` one line `[JUDGMENT]`, and `Grade:` with its reason `[JUDGMENT]`.
-   4. Milestone table (below). Rows are sorted by price, highest first, so the table reads like the chart.
-   5. `Notes:` up to 3 bullets for flags (wide stop, proxy premium, stale data, missing inputs).
-   6. If there's no valid setup, replace steps 3–5 with `No valid setup: <reason>` and still show the levels table from `tools/levels.py`.
+   3. `Structure:` one line `[JUDGMENT]`, `Grade:` with its reason `[JUDGMENT]`, and `Alignment:` the score from `tools/indicators.py` (e.g. `long +4 of 5 TFs`) `[CALC]`.
+   4. Milestone table (below), with numbers from `tools/position_calc.py`. Rows are sorted by price, highest first, so the table reads like the chart.
+   5. `P(T1 before stop): NN% [JUDGMENT]`: the user wants a judgment estimate per setup. Base it on the grade, alignment, structure location, and distance to the zone, and give a one-line reason. It's not a computed probability; `post-mortem` checks calibration over time.
+   6. `Notes:` up to 3 bullets for flags (wide stop, proxy premium, stale data, missing inputs).
+   7. If there's no valid setup, replace steps 3–6 with `No valid setup: <reason>` and still show the levels table from `tools/levels.py`.
 3. `Memory:` the `MEMORY_UPDATE` blocks, or `Memory: none`.
 4. Disclaimer, **once**, as the last line.
 
@@ -45,6 +46,8 @@ Every table row gets exactly one tag: the weakest source that went into it. A le
 Data: OKX BCH-USDT, 4H, 2026-08-25 -> 2026-10-04 16:00 UTC, 245 bars, last bar open [DATA]
 Structure: Range 296.30-322.60 (10-02 sweep low to PDH); price at 76.8% (upper third), zone at 51.3% (middle third) [CALC/JUDGMENT]
 Grade: B (4H and daily aligned bullish = A, minus one: stop is 3.04 ATR wide) [JUDGMENT]
+Alignment: long +1 of 5 TFs (15M bear, 1H mixed, 4H bull, 1D bull, 1W mixed) [CALC]
+P(T1 before stop): 35%: mid-range zone and a stop 3 ATR wide; T1 is only 0.79R away [JUDGMENT]
 
 | Milestone | Price | Dist | R | Scale | Reference | Tag |
 |---|---|---|---|---|---|---|

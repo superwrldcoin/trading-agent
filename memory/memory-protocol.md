@@ -10,7 +10,11 @@ Rules for what goes into `memory/` and how. The agent never edits memory files i
 | `user-preferences.md` | User-stated preferences: risk tolerance, timeframes, instruments, reporting style. |
 | `journal.md` | Lessons from individual trades and analyses, not yet proven. The waiting room before the playbook. |
 | `playbook.md` | Proven, dated rules the agent applies in every analysis. |
-| `markets/<SYMBOL>.md` | Durable structural notes about each instrument (e.g. session behavior, typical volatility regime, earnings seasonality). |
+| `markets/<SYMBOL>.md` | Durable structural notes about each instrument (e.g. session behavior, typical volatility regime, earnings seasonality). Class files: `markets/crypto.md`, `metals.md`, `equities.md`; template: `markets/_template.md`. |
+| `trades.md` | Closed-trade records, `T-001`, `T-002`, ... in the order trades were opened. Facts the user reports, not lessons. **Private (gitignored).** |
+| `sessions.md` | **Log, not memory.** One entry per instrument per analysis session, appended only by `tools/log_entry.py`. May contain price levels and `P(T1 before stop)` estimates. Not auto-loaded. **Private (gitignored).** |
+
+The rules below (qualification, MEMORY_UPDATE, promotion, staleness) apply to every file above **except** `sessions.md` (tool-written log) and `trades.md` (records of what happened). Those two are inputs to post-mortems, not memory.
 
 ## What qualifies for memory
 
@@ -84,5 +88,6 @@ Promotion is a `MEMORY_UPDATE` with `action: add` on `playbook.md` that cites th
 
 ## Open questions
 
-- Trade ID scheme and where closed trades are recorded (e.g. `memory/trades.md` or a CSV in `tools/output/`).
 - Should retired playbook entries move to an archive file?
+
+(Resolved 2026-10-04: trade IDs are `T-NNN` in `memory/trades.md`; session entries are `S-YYYYMMDD-HHMM/<SYMBOL>` in `memory/sessions.md`.)

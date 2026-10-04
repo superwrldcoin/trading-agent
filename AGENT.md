@@ -7,17 +7,30 @@ Produce market analysis for the user. The user makes and executes every trading 
 During analysis sessions the agent may write only to:
 - `tools/output/` (charts, CSVs, backtest results, reports)
 
-The agent does not edit `memory/` directly. It proposes `MEMORY_UPDATE` blocks (per `memory/memory-protocol.md`), and the user applies them after review.
+The agent does not edit `memory/` directly. It proposes `MEMORY_UPDATE` blocks (per `memory/memory-protocol.md`), and the user applies them after review. One exception: `tools/log_entry.py` appends to `memory/sessions.md`, a private log that isn't memory. The agent writes there only through that tool, never by hand.
 
 Everything else is read-only unless the user explicitly starts a development session.
 
+## Tools
+Run tools from the repo root with the venv Python (`.venv/Scripts/python tools/<tool>.py ...` on Windows, or `python tools/<tool>.py` with the venv active). Never compute indicators, levels, or position math by hand when a tool covers it.
+
+| Tool | Command | Use for | If it fails |
+|---|---|---|---|
+| `fetch_prices.py` | `python tools/fetch_prices.py [SYM ...] [--tf 15M 1H 4H 1D 1W]` | Raw OHLCV on the 5 timeframes, UTC-stamped, 3-min cache | Exit 1 / `FETCH FAILED`: retry once with `--no-cache`, then the backup source in `memory/core.md` (F2). Still failing → ask the user for the price and mark every level "as of user input" `[DATA:user]`. Never estimate. |
+| `levels.py` | `python tools/levels.py [SYM ...]` | PDH/PDL, PWH/PWL, PMthH/PMthL, last price, gold spot check | `DATA ERROR` → same as fetch_prices. Spot check unavailable → report the proxy without a spot comparison and say so. |
+| `indicators.py` | `python tools/indicators.py [SYM ...]` | EMA 9/21/50/200, RSI, MACD, ATR, volume trend per TF, alignment score, 4H swings/structure/base grade, correlations | A TF shows `FETCH FAILED` → that TF is `n/a` (F4); the grade needs 4H + 1D. Without those: `Grade: n/a [MISSING]`. A correlation shows `n/a` → report `[MISSING]`, never a typical value. |
+| `position_calc.py` | `python tools/position_calc.py --asset .. --side .. --zone LO HI --stop .. --targets .. [--leverage --mmr --fee --equity --risk-pct --atr]` | Blended entry and tranches, R per target, weighted R, liquidation, P&L/ROE, max leverage | `ERROR:` (e.g. stop on the wrong side, leverage beyond MMR) → the plan is invalid: fix the inputs or report "No valid setup". Missing equity/leverage → run without them and mark sizing `[MISSING]` (F1). |
+| `verify.py` | `python tools/verify.py [SYM ...]` | Rebuild 4H from 15M/5M and compare (data integrity) | `CHECK` instead of `PASS` → report the mismatch, lower affected grades one letter (F5), and tell the user. |
+| `log_entry.py` | `python tools/log_entry.py --request .. --symbol .. --side .. --grade .. [--zone --stop --targets --prob] [--note]` | Append one entry per instrument to `memory/sessions.md` | `ERROR:` → fix the fields (it validates zone/stop/target order and needs `--prob` for setups). If it still fails, put the entry text at the end of the report and tell the user it wasn't logged. |
+
 ## Session workflow
-1. **Load context:** core, user preferences and playbook (auto-loaded), plus `memory/markets/<SYMBOL>.md` for each instrument in scope.
+1. **Load context:** core, user preferences and playbook (auto-loaded), plus `memory/markets/<SYMBOL>.md` (and its class file) for each instrument in scope.
 2. **Staleness check:** flag playbook entries older than 90 days (`flag-stale`).
-3. **Fetch data:** pull fresh data with `tools/`. Record the source, symbol, interval and as-of timestamp (UTC).
-4. **Analyze:** apply playbook rules. Show computations. Save outputs to `tools/output/` with dated filenames.
-5. **Report:** use the output format below.
-6. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates." Do not apply them; the user does.
+3. **Fetch data:** run `levels.py` and `indicators.py` for the instruments in scope (they call `fetch_prices.py`). Run `verify.py` when the user asks for verification or after any change to the data pipeline. Record source, symbol, interval and as-of timestamp (UTC) from the tool output.
+4. **Analyze, tools first:** for every candidate setup, run `position_calc.py` with the zone, stop and targets before writing anything about it. Then apply the skills (market-structure, multi-timeframe-momentum, levels-and-entries, risk-and-sizing, macro-and-catalysts) and the playbook. Show computations. Save outputs to `tools/output/` with dated filenames.
+5. **Report:** use the output format below, including `P(T1 before stop)` for each setup.
+6. **Log:** run `log_entry.py` once per instrument (setups and "no valid setup"), all with the same `--session` ID.
+7. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates." Do not apply them; the user does.
 
 ## Evidence rules
 - Every number comes from fetched data or a computation run this session, never from memory or training data.
@@ -41,6 +54,7 @@ Follow `skills/report-format.md`. In short:
 - Tag every number and claim: `[DATA]` (fetched or user-supplied), `[CALC]` (computed this session), `[JUDGMENT]` (interpretation).
 - Every level (zone, invalidation, targets) must tie to a named reference level (PDH/PDL, PWH/PWL, PMthH/PMthL, swing, ATR) computed from data fetched this session.
 - If structure is unclear or the data is stale, write "No valid setup" for that instrument instead of forcing a table.
+- Each setup states `P(T1 before stop): NN% [JUDGMENT]`. This is a judgment estimate (the user chose it), not a computed probability. It gets logged so post-mortems can check calibration.
 - End the report with `MEMORY_UPDATE` blocks or "Memory: none", then the disclaimer, **once**.
 
 The report is analysis. The agent never places orders. The user decides and executes.

@@ -11,6 +11,8 @@ One or more of:
 - Pasted text (prices, matrices, levels)
 
 ## Procedure
+**Tool output:** `python tools/fetch_prices.py` stamps each result with its UTC fetch time, the age of the last bar, and whether it came from the 3-minute cache. Copy those into the `Data:` line. If it prints `FETCH FAILED`, follow the fallback it prints (backup source, then user-supplied prices marked "as of user input").
+
 1. **Identify** the source and give it a tag: tool CSV → `[DATA]`; anything the user provides → `[DATA:user]`, and for screenshots `[DATA:screenshot]`.
 2. **Tool CSVs:** columns are `ts, open, high, low, close, volume[, confirmed]`. `ts` is the bar **open** time in UTC (ISO 8601). If `confirmed` is `False`, the last bar is still forming. Use it for current price, never for swings or closes that need to be final.
 3. **User CSVs:** map the columns (case-insensitive: time/date/timestamp, open, high, low, close, volume). Find the timezone: an explicit offset, the header, or ask. Check whether time means bar open or close (TradingView exports use bar open). Convert to UTC. Sort ascending, drop duplicates, and check high ≥ max(open, close) and low ≤ min(open, close) on every row.

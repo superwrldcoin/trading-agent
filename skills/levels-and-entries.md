@@ -10,6 +10,8 @@ Build the execution zone, the pyramid of entry tranches, the ATR-based invalidat
 - Scale-out split (`memory/user-preferences.md`: 40/40/20 for three targets, 50/50 for two)
 
 ## Procedure
+**Tools:** swings, ATR, and the 4H structure come from `python tools/indicators.py`. Tranches, blended entry, R per target, and stop width come from `python tools/position_calc.py --zone LOW HIGH --stop .. --targets .. --atr ..`.
+
 1. **Swing points:** a 4H swing high is a bar whose high is above the 2 bars before it and the 2 after it. A swing low is the mirror image. A swing is only confirmed after the 2 bars to its right have closed, so the last 2 bars can never be swings.
 2. **Zone anchor:** the reference level or swing in the direction of the pullback (long: the nearest support at or below price that `market-structure` supports).
 3. **Execution zone:** anchor to anchor ± 0.5 × ATR(14), stretching into the trade (long: anchor up to anchor + 0.5 ATR).

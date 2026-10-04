@@ -15,6 +15,7 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 
 ## Timeframe (added: 2026-10-04)
 - Primary: **4H**. Structure, zones, and invalidation are judged on 4H candle closes.
+- Tools cover **15M, 1H, 4H, 1D, 1W** (the user's choice over a 5M set). 5M is used only by `tools/verify.py`. (added: 2026-10-04)
 
 ## Analysis method (added: 2026-10-04)
 - Structure is read off higher-timeframe liquidity reference levels:
@@ -50,7 +51,10 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - Asked for 4H findings to be **verified against 15M and 5M bars** (done via `tools/verify.py` in the 2026-10-04 session). Whether this should run every session: **unknown**. (added: 2026-10-04)
 - When inputs are missing, follow the **fallback rules** in AGENT.md (F1–F6) instead of guessing. (added: 2026-10-04)
 - News searches are allowed, but each one asks the user first (settings). (added: 2026-10-04)
-- The repo is **public** (github.com/superwrldcoin/trading-agent). User-supplied chart snapshots are not committed. (added: 2026-10-04)
+- The repo is **public** (github.com/superwrldcoin/trading-agent). User-supplied chart snapshots are not committed, and `trades.md` and `sessions.md` are gitignored. (added: 2026-10-04)
+- **P(T1 before stop)**: the user wants a judgment probability estimate per setup, tagged `[JUDGMENT]`, logged, and checked for calibration in post-mortems (chosen over dropping the field). (added: 2026-10-04)
+- **Indicators:** EMA 9/21/50/200, MACD, and the alignment score are reported as context; the A/B/C grade stays on the EMA20/50 + RSI rules (the user's choice). (added: 2026-10-04)
+- Session logs go to `memory/sessions.md` via `tools/log_entry.py`, not to `journal.md`, so the journal stays lessons-only. (added: 2026-10-04)
 
 ## Not yet specified
 - Risk tolerance / max position size: **unknown**

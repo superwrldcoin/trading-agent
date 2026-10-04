@@ -16,10 +16,11 @@ Review a closed trade against its original plan. Measure the result in R, separa
 | Thesis (written **before** entry) | "PDL sweep reclaim, range mid → PDH, PWH" |
 | Open / close time (UTC) | |
 | Original report file | `tools/output/<stamp>_levels.md` |
+| Session link (optional) | `S-20261004-1856/BCHUSDT` in `memory/sessions.md` |
 
 ## Procedure
-1. Check the required fields. Anything missing → F1 (see below).
-2. **Result:** realized R per exit and overall, plus net $ after fees and funding.
+1. Check the required fields. Anything missing → F1 (see below). Record the trade in `memory/trades.md` (next free `T-NNN`, using the entry format at the top of that file).
+2. **Result:** realized R per exit and overall, plus net $ after fees and funding. Use `tools/position_calc.py` with the actual fills to check the numbers.
 3. **Excursions:** MAE (worst price against you) and MFE (best price in your favor) between entry and exit, from the 4H CSV, both in R.
 4. **Thesis review:** did the structure, momentum grade, and levels behave as described? Mark each **held**, **failed**, or **untested**.
 5. **Execution review:** did the fills, stop, and exits follow the plan? Mark each deviation and its cost in R.
@@ -32,6 +33,7 @@ Review a closed trade against its original plan. Measure the result in R, separa
    | failed | deviated | review both |
 7. **Lesson candidates:** at most 2, each phrased as a testable rule. Each goes into `journal.md` as a `MEMORY_UPDATE` (`action: add`) citing the trade ID. **Never** propose a playbook entry from one trade (the promotion rule needs 3 trades or a data check).
 8. Check `journal.md` for similar earlier lessons. If this trade makes a total of 3, note "promotion candidate" and list the trade IDs.
+9. **Calibration:** if the trade links to a session entry with `P(T1 before stop)`, record whether T1 came before the stop (1 or 0). Ask the user to update that entry's `Outcome:` line. Once 10 or more closed trades have estimates, report the Brier score and the hit rate per probability bucket (<40%, 40–60%, >60%). A sample under 10 trades is "too few to judge".
 
 ## Formulas
 ```
@@ -39,6 +41,7 @@ R_exit_i     = (exit_i − entry) / (entry − stop)          (long)
 realized_R   = Σ w_i · R_exit_i
 MAE_R        = (entry − lowest_low) / (entry − stop)      (long)
 MFE_R        = (highest_high − entry) / (entry − stop)    (long)
+Brier        = mean( (p_i − outcome_i)² ),  p as 0..1      (0 = perfect, 0.25 = always saying 50%)
 ```
 
 **Worked example** (**hypothetical**, to show the math with the real BCH plan prices; this is not a real trade): long 6.0747 BCH at 309.80, stop 293.64 (risk 16.16/unit). 50% exits at T1 322.60, then the stop moves to break-even and the other 50% exits at 309.80.
