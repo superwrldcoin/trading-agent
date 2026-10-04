@@ -48,6 +48,7 @@
       <label>Risk % <input id="risk" placeholder="1"></label>
       <button id="quick">Quick check</button>
       <button id="agent" class="secondary">Full agent analysis</button>
+      <button id="portfolio" class="secondary" title="Exposure and stress test for memory/positions.json">Portfolio</button>
       <span class="status" id="status"></span>
     </div>
   </div>
@@ -81,8 +82,8 @@ function md(text){                       // small markdown renderer: headings, t
   return h;
 }
 async function ask(kind){
-  const text = $("#q").value.trim(); if (!text) return;
-  const btns = [$("#quick"), $("#agent")]; btns.forEach(b=>b.disabled=true);
+  const text = kind === "portfolio" ? "portfolio" : $("#q").value.trim(); if (!text) return;
+  const btns = [$("#quick"), $("#agent"), $("#portfolio")]; btns.forEach(b=>b.disabled=true);
   const t0 = Date.now(); const timer = setInterval(()=>{ $("#status").textContent =
     (kind==="agent" ? "Full agent running... " : "Checking... ") + Math.round((Date.now()-t0)/1000) + "s"; }, 500);
   try {
@@ -98,6 +99,7 @@ async function ask(kind){
 }
 $("#quick").onclick = () => ask("quick");
 $("#agent").onclick = () => ask("agent");
+$("#portfolio").onclick = () => ask("portfolio");
 $("#q").addEventListener("keydown", e => { if (e.key==="Enter" && (e.ctrlKey||e.metaKey)) ask("quick"); });
 document.querySelectorAll(".chip").forEach(c => c.onclick = () => { $("#q").value = c.dataset.ex; $("#q").focus(); });
 fetch("/api/health").then(r=>r.json()).then(j=>{ if(!j.claude_cli){ $("#agent").disabled=true;

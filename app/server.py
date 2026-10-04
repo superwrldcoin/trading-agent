@@ -90,6 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, agent.run_quick(text, equity, risk))
         if self.path == "/api/agent":
             return self._json(200, agent.run_agent(text))
+        if self.path == "/api/portfolio":
+            return self._json(200, agent.run_portfolio())
         return self._json(404, {"error": "not found"})
 
 

@@ -36,13 +36,17 @@ Follow CLAUDE.md and AGENT.md exactly. The user cannot answer follow-up question
 apply the AGENT.md fallback rules (F1-F6) and state any assumption in one [ASSUMPTION] line.
 
 1. Start by running the quick check on the request: `{python} tools/quick_check.py "{text}"`
-2. Then run whatever else the request needs (levels.py, indicators.py, position_calc.py with the
-   setup's numbers) and apply the skills: market-structure, multi-timeframe-momentum (EMA + VWAP
-   conviction), levels-and-entries, risk-and-sizing, leveraged-position-math, report-format.
-3. Reply with the complete report in the skills/report-format.md style: Data line, structure, conviction
-   grade, milestone table (include liquidation if leverage was given), Notes, P(T1 before stop) with a
-   one-line reason, "What would change this", MEMORY_UPDATE blocks or "Memory: none", and the
-   disclaimer once at the end.
+   (it includes the user's rules check and, if leveraged, the leverage-volatility check).
+2. Then run whatever else the request needs: levels.py, indicators.py, position_calc.py / vol_check.py with the
+   setup's numbers, trade_plan.py for staged entries, options.py for options, portfolio.py if
+   `{python} tools/positions.py list` shows open positions. Apply the skills: rules-check, market-structure,
+   multi-timeframe-momentum (EMA + VWAP conviction), levels-and-entries, risk-and-sizing,
+   leveraged-position-math, leverage-volatility-check, portfolio-exposure / stress-test, trade-plan,
+   options-greeks, bear-case-review, report-format.
+3. Reply with the complete report in the skills/report-format.md style: Rules line, Data line, structure,
+   conviction grade, milestone table (include liquidation if leverage was given), Leverage vs volatility,
+   Portfolio impact (if positions), P(T1 before stop) with a one-line reason, Notes, Bear case (red team),
+   "What would change this", MEMORY_UPDATE blocks or "Memory: none", and the disclaimer once at the end.
 4. Event check (macro-and-catalysts): use WebSearch for high-impact events in the next 48h that affect this
    asset, and news if a trigger fired. Cite source and time. If WebSearch is denied, say
    "calendar not checked [MISSING]" and cap the grade at B.
@@ -72,6 +76,23 @@ def run_quick(text: str, equity: float | None = None, risk_pct: float | None = N
         ok = True
     except quick_check.ParseError as exc:
         md, ok = f"**Couldn't read that request:** {exc}\n\nTry e.g. `BTC long, 20x, entry 98,400`.", False
+    except fetch_prices.FetchError as exc:
+        md, ok = f"**FETCH FAILED:** {exc}", False
+    return {"ok": ok, "markdown": md, "seconds": round(time.time() - t0, 1)}
+
+
+def run_portfolio() -> dict:
+    """Exposure + stress report for memory/positions.json (no AI)."""
+    import pandas as pd
+    from tools import portfolio, positions
+    t0 = time.time()
+    data = positions.load()
+    try:
+        syms = sorted({p["symbol"] for p in data["positions"]})
+        prices = {s: float(fetch_prices.get_ohlcv(s, "15M", bars=50)["close"].iloc[-1]) for s in syms}
+        daily = {s: fetch_prices.get_ohlcv(s, "1D", bars=400) for s in syms}
+        md = portfolio.render(portfolio.analyze(data, prices, daily, pd.Timestamp.now(tz="UTC")))
+        ok = True
     except fetch_prices.FetchError as exc:
         md, ok = f"**FETCH FAILED:** {exc}", False
     return {"ok": ok, "markdown": md, "seconds": round(time.time() - t0, 1)}

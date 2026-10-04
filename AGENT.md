@@ -23,13 +23,23 @@ Run tools from the repo root with the venv Python (`.venv/Scripts/python tools/<
 | `position_calc.py` | `python tools/position_calc.py --asset .. --side .. --zone LO HI --stop .. --targets .. [--leverage --mmr --fee --equity --risk-pct --atr]` | Blended entry and tranches, R per target, weighted R, liquidation, P&L/ROE, max leverage | `ERROR:` (e.g. stop on the wrong side, leverage beyond MMR) → the plan is invalid: fix the inputs or report "No valid setup". Missing equity/leverage → run without them and mark sizing `[MISSING]` (F1). |
 | `verify.py` | `python tools/verify.py [SYM ...]` | Rebuild 4H from 15M/5M and compare (data integrity) | `CHECK` instead of `PASS` → report the mismatch, lower affected grades one letter (F5), and tell the user. |
 | `log_entry.py` | `python tools/log_entry.py --request .. --symbol .. --side .. --grade .. [--zone --stop --targets --prob] [--note]` | Append one entry per instrument to `memory/sessions.md` | `ERROR:` → fix the fields (it validates zone/stop/target order and needs `--prob` for setups). If it still fails, put the entry text at the end of the report and tell the user it wasn't logged. |
+| `rules_check.py` | `python tools/rules_check.py --symbol .. --side .. --leverage .. [--risk-pct --weighted-r --stop/--no-stop --notional --liq-touch-5d --option-premium]` | **The user's own rules** (Trading rules block in user-preferences): PASS / BREAKS / not set per rule | Rules block missing or all `null` → "Rules: none set yet". Never invent limits. |
+| `vol_check.py` | `python tools/vol_check.py SYM long\|short --leverage L [--entry --stop --mmr]` | Liquidation and stop distance in ATR, historical 1/3/5/10-day touch odds, leverage for ≤ 5% 5-day odds | Daily fetch fails → `Leverage vs volatility: n/a [MISSING]`; leverage > 5x can't grade above C. |
+| `trade_plan.py` | `python tools/trade_plan.py --asset .. --side .. --zone LO HI --size N\|--equity --risk-pct --stop .. --targets .. --leverage .. [--atr --trail-atr --addon P:S]` | Staged entries: avg entry, liquidation and R after each add; TP ladder; breakeven/trailing; add-on checks; pyramid trap | `ERROR:` → invalid plan (stop/targets order). FAIL flags (stage beyond liquidation) → report them. |
+| `positions.py` | `python tools/positions.py list \| set-equity N \| add .. \| add-option .. \| close P-NNN` | The user's open positions and equity (`memory/positions.json`, private) | Only change it when the user asks. |
+| `portfolio.py` | `python tools/portfolio.py [--shocks ..]` | Exposure by theme, 30/90d correlation, open risk, stress test (orderly / gap / historical gap) with liquidations | No positions → say so. `FETCH FAILED` → that position can't be valued; never use a remembered price. |
+| `options.py` | `python tools/options.py chain SYM [--dte N]` / `analyze --symbol SYM --leg "long call 520 2026-11-20 @12.50 x2" ..` | Chains (IV, expected move, skew, greeks), multi-leg greeks, breakevens, max P&L, P&L grid | No source for the symbol (BCH) → say so. Fetch fails → `Options data unavailable [MISSING]`. |
+| `log_trade.py` | `python tools/log_trade.py --symbol .. --side .. --entry .. --exit .. --size .. --stop .. --opened .. --closed .. --thesis .. [--thesis-recalled --t1 --session --prob]` | Record a closed trade in `memory/trades.md` with computed R, MAE/MFE, T1-before-stop | `ERROR:` → fix the inputs (sizes must match, stop side). MAE/MFE unknown if bars aren't available. |
 
 ## Quick trade questions
 For a one-line question about a specific trade ("BTC long, 20x, entry 98,400, how does it look?"):
-1. Run `quick_check.py` with the user's text, verbatim.
-2. Check its derived stop and targets against the skills. If you change one, re-run `position_calc.py` with the new numbers.
-3. Add what the tool can't: the macro/event check (ask before searching), `P(T1 before stop)` with a reason, and "What would change this".
-4. Answer in the report format without follow-up questions. Missing inputs follow F1–F6. Log with `log_entry.py`.
+1. Run `quick_check.py` with the user's text, verbatim. It already includes the rules check and, for leverage > 1, the leverage-volatility check.
+2. Check its derived stop and targets against the skills. If you change one, re-run `position_calc.py` (and `vol_check.py`) with the new numbers. For staged entries or adds, run `trade_plan.py`. For options, run `options.py`.
+3. If the user has open positions (`positions.py list`), run `portfolio.py` and say what this trade adds to the combined exposure and stress results.
+4. Add what the tools can't: the macro/event check (web search in headless runs; ask first in interactive runs), the **bear-case review**, `P(T1 before stop)` with a reason, and "What would change this".
+5. Answer in the report format without follow-up questions. Missing inputs follow F1–F6. Log with `log_entry.py`.
+
+**Closed trades:** "post-mortem: ..." → `log_trade.py`, then `skills/post-mortem.md` (interactive only, because the user approves the MEMORY_UPDATE).
 
 Interfaces: `start-ui.cmd` / `python app/server.py` (local web page at http://127.0.0.1:8765), and `ask.ps1` / `ask.sh` / `python app/ask.py` (terminal). "Quick check" runs `quick_check.py` only. "Full agent" runs this agent headlessly with `claude -p` in the repo.
 
@@ -37,10 +47,12 @@ Interfaces: `start-ui.cmd` / `python app/server.py` (local web page at http://12
 1. **Load context:** core, user preferences and playbook (auto-loaded), plus `memory/markets/<SYMBOL>.md` (and its class file) for each instrument in scope.
 2. **Staleness check:** flag playbook entries older than 90 days (`flag-stale`).
 3. **Fetch data:** run `levels.py` and `indicators.py` for the instruments in scope (they call `fetch_prices.py`). Run `verify.py` when the user asks for verification or after any change to the data pipeline. Record source, symbol, interval and as-of timestamp (UTC) from the tool output.
-4. **Analyze, tools first:** for every candidate setup, run `position_calc.py` with the zone, stop and targets before writing anything about it. Then apply the skills (market-structure, multi-timeframe-momentum, levels-and-entries, risk-and-sizing, macro-and-catalysts) and the playbook. Show computations. Save outputs to `tools/output/` with dated filenames.
-5. **Report:** use the output format below, including `P(T1 before stop)` for each setup.
-6. **Log:** run `log_entry.py` once per instrument (setups and "no valid setup"), all with the same `--session` ID.
-7. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates." Do not apply them; the user does.
+4. **Rules first:** run `rules_check.py` for each candidate plan (`skills/rules-check.md`) and put the result at the top of that instrument's section.
+5. **Analyze, tools first:** for every candidate setup, run `position_calc.py` with the zone, stop and targets before writing anything about it. If leveraged, run `vol_check.py`. If staged, run `trade_plan.py`. If options, run `options.py`. If positions are open, run `portfolio.py`. Then apply the skills (market-structure, multi-timeframe-momentum, levels-and-entries, risk-and-sizing, leverage-volatility-check, macro-and-catalysts, and portfolio-exposure / stress-test / trade-plan / options-greeks where relevant) and the playbook. Show computations. Save outputs to `tools/output/` with dated filenames.
+6. **Red team:** run the `bear-case-review` pass on every setup before writing the report.
+7. **Report:** use the output format below, including `P(T1 before stop)` for each setup.
+8. **Log:** run `log_entry.py` once per instrument (setups and "no valid setup"), all with the same `--session` ID.
+9. **Memory:** propose `MEMORY_UPDATE` blocks for anything that qualifies, or state "no memory updates." Do not apply them; the user does.
 
 ## Evidence rules
 - Every number comes from fetched data or a computation run this session, never from memory or training data.

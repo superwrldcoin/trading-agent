@@ -36,6 +36,22 @@ The **full agent** runs the quick check, then applies the skills, adds the event
 The full agent needs the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) logged in on the machine.
 Run `claude` once inside this folder and accept the trust prompt. No API key is stored.
 
+## Everyday commands
+
+```powershell
+# your rules: edit the Trading rules JSON block at the end of memory/user-preferences.md
+.venv\Scripts\python tools\positions.py set-equity 10000
+.venv\Scripts\python tools\positions.py add --symbol BTC/USDT --side long --entry 85000 --size 0.1 --leverage 10 --stop 83000
+.venv\Scripts\python tools\portfolio.py                                    # exposure, correlation, stress test
+.venv\Scripts\python tools\vol_check.py BTC/USDT long --leverage 40         # liquidation vs normal volatility
+.venv\Scripts\python tools\trade_plan.py --asset BCH/USDT --side long --zone 296.30 298.96 --size 30 --stop 293.64 --targets 308.60 322.60 --leverage 10
+.venv\Scripts\python tools\options.py chain MSFT --dte 45
+.venv\Scripts\python tools\options.py analyze --symbol MSFT --leg "long call 520 2026-11-20 @23.20 x2" --leg "short call 560 2026-11-20 @9.00 x2"
+```
+
+After a trade closes, in `claude`: `post-mortem: BTC long, entry ..., exit ..., size ..., stop ..., 20x, opened ..., closed ..., thesis was "..."`.
+Review the proposed MEMORY_UPDATE, approve it, then commit `memory/journal.md`. Trades, sessions, and positions stay private (gitignored).
+
 ## Setup
 
 ```bash
@@ -50,9 +66,9 @@ pytest                        # all tests are offline
 | Path | What |
 |---|---|
 | `CLAUDE.md`, `AGENT.md` | Agent rules: role, write scope, tools and fallbacks, session workflow, report format |
-| `skills/` | Procedures with worked examples: report-format, levels-and-entries, multi-timeframe-momentum (EMA + VWAP conviction), market-structure, risk-and-sizing, leveraged-position-math, data-ingest, macro-and-catalysts, post-mortem |
+| `skills/` | Procedures with worked examples: report-format, levels-and-entries, multi-timeframe-momentum (EMA + VWAP conviction), market-structure, risk-and-sizing, leveraged-position-math, leverage-volatility-check, rules-check, trade-plan, portfolio-exposure, stress-test, options-greeks, bear-case-review, data-ingest, macro-and-catalysts, post-mortem |
 | `memory/` | Durable facts (`core.md`), preferences, playbook/journal (memory protocol), per-market notes. `trades.md` and `sessions.md` are private and gitignored |
-| `tools/` | `quick_check.py`, `fetch_prices.py`, `levels.py`, `indicators.py`, `position_calc.py`, `verify.py`, `log_entry.py` |
+| `tools/` | `quick_check.py`, `fetch_prices.py`, `levels.py`, `indicators.py`, `position_calc.py`, `vol_check.py`, `trade_plan.py`, `rules_check.py`, `positions.py`, `portfolio.py`, `options.py` (+ `options_math.py`), `log_trade.py`, `log_entry.py`, `verify.py` |
 | `app/` | Local web server, terminal entry point, headless agent runner |
 | `tests/` | pytest suite (network mocked) |
 

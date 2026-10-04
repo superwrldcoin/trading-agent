@@ -13,12 +13,17 @@ Turn the analysis into the report the user reads. Each instrument gets one miles
 1. Start with an `[ASSUMPTION]` line only if fallback F6 applied (ambiguous request).
 2. For each instrument, in watchlist order:
    1. Header: `## <SYMBOL>: 4H, as-of <last bar UTC>`.
-   2. `Data:` line, tagged `[DATA]`.
-   3. `Structure:` one line `[JUDGMENT]`, `Grade:` with its reason `[JUDGMENT]`, and `Alignment:` the score from `tools/indicators.py` (e.g. `long +4 of 5 TFs`) `[CALC]`.
-   4. Milestone table (below), with numbers from `tools/position_calc.py`. Rows are sorted by price, highest first, so the table reads like the chart.
-   5. `P(T1 before stop): NN% [JUDGMENT]`: the user wants a judgment estimate per setup. Base it on the grade, alignment, structure location, and distance to the zone, and give a one-line reason. It's not a computed probability; `post-mortem` checks calibration over time.
-   6. `Notes:` up to 3 bullets for flags (wide stop, proxy premium, stale data, missing inputs).
-   7. If there's no valid setup, replace steps 3–6 with `No valid setup: <reason>` and still show the levels table from `tools/levels.py`.
+   2. `Rules:` one line from `rules_check.py` (`skills/rules-check.md`): broken rules first, or "no rule broken" / "none set yet".
+   3. `Data:` line, tagged `[DATA]`.
+   4. `Structure:` one line `[JUDGMENT]`, `Grade:` with its reason `[JUDGMENT]`, and `Alignment:` the score from `tools/indicators.py` (e.g. `long +4 of 5 TFs`) `[CALC]`.
+   5. Milestone table (below), with numbers from `tools/position_calc.py`. Rows are sorted by price, highest first, so the table reads like the chart. For staged entries, add the `trade_plan.py` stage table and ladder under it.
+   6. `Leverage vs volatility:` one line from `vol_check.py` when leverage > 1 (`skills/leverage-volatility-check.md`).
+   7. `Portfolio impact:` one line when positions are open (`portfolio.py`): theme exposure after this trade, correlated holdings, and the worst stress scenario.
+   8. `P(T1 before stop): NN% [JUDGMENT]`: the user wants a judgment estimate per setup. Base it on the grade, alignment, structure location, and distance to the zone, and give a one-line reason. It's not a computed probability; `post-mortem` checks calibration over time.
+   9. `Notes:` up to 3 bullets for flags (wide stop, proxy premium, stale data, missing inputs).
+   10. `Bear case (red team):` the `bear-case-review` block: steelman, "Fails if", weakest link.
+   11. For options, add the `options-greeks` section (chain line, legs, net greeks, expiry line, P&L grid).
+   12. If there's no valid setup, replace steps 4–11 with `No valid setup: <reason>` and still show the levels table from `tools/levels.py`.
 3. `Memory:` the `MEMORY_UPDATE` blocks, or `Memory: none`.
 4. Disclaimer, **once**, as the last line.
 

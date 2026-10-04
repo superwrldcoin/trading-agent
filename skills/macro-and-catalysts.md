@@ -25,7 +25,8 @@ The signs are typical relationships, not rules. Always measure the current corre
    - a 4H bar moved > 2 ATR, or there's a gap > 1 ATR, with no known scheduled event behind it
    - the user asks
    - the event calendar is unknown and a report is due within 48h of a likely event
-   Searches need the user's approval (WebSearch is set to ask first). Cite the source and time for each news item, tag it `[DATA:news]`, and never quote unsourced headlines.
+   **Interactive sessions:** searches need the user's approval (WebSearch is set to ask first). **Full-agent runs** (web page / `ask.ps1 -Agent`): the interface allows WebSearch, so run the event check (high-impact events in the next 48h for this asset) on every setup. If it comes back denied (because `.claude/settings.json` still lists WebSearch under "ask"), write `calendar not checked [MISSING]` and cap the grade at B. Cite the source and time for each news item, tag it `[DATA:news]`, and never quote unsourced headlines.
+   **Options:** an event before expiry means IV crush afterwards. Flag it in the `options-greeks` section.
 4. Summarize in at most 3 bullets. News and events **never** go into memory.
 
 ## Formulas

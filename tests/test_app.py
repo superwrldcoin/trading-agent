@@ -170,3 +170,16 @@ def test_run_agent_json_error_reports_credit(monkeypatch):
 def test_prompt_includes_event_check_and_websearch_allowed():
     assert "WebSearch" in agent.ALLOWED_TOOLS
     assert "Event check" in agent.build_prompt("BTC long")
+
+
+def test_portfolio_endpoint(srv, monkeypatch):
+    monkeypatch.setattr(agent, "run_portfolio", lambda: {"ok": True, "markdown": "PORTFOLIO", "seconds": 0.1})
+    status, body = request(srv, "POST", "/api/portfolio", {"text": "portfolio"}, OK)
+    assert status == 200 and json.loads(body)["markdown"] == "PORTFOLIO"
+
+
+def test_run_portfolio_empty(monkeypatch, tmp_path):
+    from tools import positions
+    monkeypatch.setattr(positions, "POSITIONS_PATH", tmp_path / "none.json")
+    res = agent.run_portfolio()
+    assert res["ok"] and "No open positions" in res["markdown"]

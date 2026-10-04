@@ -12,6 +12,8 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 
 ## Typical leverage
 - **unknown**. Not stated yet. Also unknown: equity, risk % per trade, exchange/broker, fees, margin mode (isolated or cross), instrument type per asset (spot, futures, ETF, CFD). Until these are known, sizing and leverage checks are skipped (AGENT.md F1).
+- **Trades options:** yes (stated 2026-10-04). Which underlyings and strategies: **unknown**. (added: 2026-10-04)
+- Max leverage, risk limits, cooldowns: set them in the **Trading rules** block at the end of this file. They're checked on every plan.
 
 ## Timeframe (added: 2026-10-04)
 - Primary: **4H**. Structure, zones, and invalidation are judged on 4H candle closes.
