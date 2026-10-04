@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Agent</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --text:#e6e8ec; --muted:#9aa3b2; --accent:#4c8dff;
+          --fail:#ff5c5c; --warn:#f0b429; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:1100px; margin:0 auto; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 18px; font-size:13px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  textarea { width:100%; min-height:70px; resize:vertical; background:#0c0e12; color:var(--text);
+             border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  input { width:120px; background:#0c0e12; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  button { border:0; border-radius:8px; padding:9px 14px; font:inherit; cursor:pointer; background:var(--accent); color:#fff; }
+  button.secondary { background:#2a3140; } button:disabled { opacity:.5; cursor:wait; }
+  .chip { background:#222836; color:var(--muted); border:1px solid var(--line); padding:4px 10px; border-radius:99px; font-size:12px; }
+  .status { color:var(--muted); font-size:13px; margin-left:auto; }
+  #out { margin-top:16px; overflow-x:auto; }
+  #out table { border-collapse:collapse; margin:10px 0; font-size:13px; }
+  #out th, #out td { border:1px solid var(--line); padding:4px 8px; text-align:left; white-space:nowrap; }
+  #out th { background:#1d2230; }
+  #out code { background:#0c0e12; padding:1px 4px; border-radius:4px; }
+  #out pre { background:#0c0e12; padding:10px; border-radius:8px; overflow-x:auto; }
+  #out h2 { font-size:17px; margin:14px 0 6px; } #out h3 { font-size:15px; }
+  .fail { color:var(--fail); } .warn { color:var(--warn); } .ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Trading Agent</h1>
+  <p class="sub">Analysis only. Watchlist: BTC/USDT, BCH/USDT, XAU/USD, SI, GLD, MSFT. <b>Quick check</b>: about 30s on first fetch (cached 3 min), no AI.
+     <b>Full agent</b>: Claude Code with all skills and memory, takes a few minutes.</p>
+  <div class="panel">
+    <textarea id="q" placeholder="BTC long, 20x, entry 98,400, how does it look?"></textarea>
+    <div class="row">
+      <span class="chip" data-ex="BTC long, 20x, entry 98,400, how does it look?">BTC long 20x @ 98,400</span>
+      <span class="chip" data-ex="gold short 5x">gold short 5x</span>
+      <span class="chip" data-ex="MSFT long @ 513.94 stop 487.30 account 10k risk 1%">MSFT long, sized</span>
+      <span class="chip" data-ex="how does BCH look?">how does BCH look?</span>
+    </div>
+    <div class="row">
+      <label>Equity <input id="equity" placeholder="optional"></label>
+      <label>Risk % <input id="risk" placeholder="1"></label>
+      <button id="quick">Quick check</button>
+      <button id="agent" class="secondary">Full agent analysis</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+  <div id="out" class="panel" style="display:none"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function inline(s){
+  return esc(s).replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
+    .replace(/\bFAIL\b/g,'<span class="fail">FAIL</span>').replace(/\bWARN\b/g,'<span class="warn">WARN</span>');
+}
+function md(text){                       // small markdown renderer: headings, tables, lists, code, paragraphs
+  const L = text.replace(/\r/g,"").split("\n"); let h = "", i = 0;
+  while (i < L.length){
+    const l = L[i];
+    if (l.startsWith("```")){ let c=[]; i++; while(i<L.length && !L[i].startsWith("```")) c.push(L[i++]); i++;
+      h += "<pre>"+esc(c.join("\n"))+"</pre>"; continue; }
+    if (/^\|.*\|\s*$/.test(l)){ let rows=[]; while(i<L.length && /^\|.*\|\s*$/.test(L[i])) rows.push(L[i++]);
+      const cells = r => r.trim().slice(1,-1).split("|").map(c=>c.trim());
+      const body = rows.filter(r => !/^\|[\s:|-]+\|\s*$/.test(r));
+      h += "<table>" + body.map((r,k)=>"<tr>"+cells(r).map(c=>k?`<td>${inline(c)}</td>`:`<th>${inline(c)}</th>`).join("")+"</tr>").join("") + "</table>";
+      continue; }
+    const m = l.match(/^(#{1,4})\s+(.*)/); if (m){ h += `<h${m[1].length+1}>${inline(m[2])}</h${m[1].length+1}>`; i++; continue; }
+    if (/^\s*[-*]\s+/.test(l)){ let it=[]; while(i<L.length && /^\s*[-*]\s+/.test(L[i])) it.push(L[i++].replace(/^\s*[-*]\s+/,""));
+      h += "<ul>"+it.map(x=>`<li>${inline(x)}</li>`).join("")+"</ul>"; continue; }
+    if (l.trim()===""){ i++; continue; }
+    let p=[]; while(i<L.length && L[i].trim()!=="" && !/^(\||#|```|\s*[-*]\s)/.test(L[i])) p.push(L[i++]);
+    h += "<p>"+inline(p.join(" "))+"</p>";
+  }
+  return h;
+}
+async function ask(kind){
+  const text = $("#q").value.trim(); if (!text) return;
+  const btns = [$("#quick"), $("#agent")]; btns.forEach(b=>b.disabled=true);
+  const t0 = Date.now(); const timer = setInterval(()=>{ $("#status").textContent =
+    (kind==="agent" ? "Full agent running... " : "Checking... ") + Math.round((Date.now()-t0)/1000) + "s"; }, 500);
+  try {
+    const r = await fetch("/api/"+kind, { method:"POST",
+      headers:{ "Content-Type":"application/json", "X-Trading-Agent":"1" },
+      body: JSON.stringify({ text, equity: $("#equity").value || null, risk_pct: $("#risk").value || null }) });
+    const j = await r.json();
+    $("#out").style.display = "block";
+    $("#out").innerHTML = md(j.markdown || ("**Error:** " + (j.error || r.status)));
+    $("#status").textContent = (j.ok ? "Done" : "Finished with errors") + (j.seconds!==undefined ? ` in ${j.seconds}s` : "");
+  } catch(e){ $("#status").textContent = "Request failed: " + e; }
+  finally { clearInterval(timer); btns.forEach(b=>b.disabled=false); }
+}
+$("#quick").onclick = () => ask("quick");
+$("#agent").onclick = () => ask("agent");
+$("#q").addEventListener("keydown", e => { if (e.key==="Enter" && (e.ctrlKey||e.metaKey)) ask("quick"); });
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => { $("#q").value = c.dataset.ex; $("#q").focus(); });
+fetch("/api/health").then(r=>r.json()).then(j=>{ if(!j.claude_cli){ $("#agent").disabled=true;
+  $("#agent").title="Claude Code CLI not found on this machine"; }});
+</script>
+</body>
+</html>

@@ -16,12 +16,22 @@ Run tools from the repo root with the venv Python (`.venv/Scripts/python tools/<
 
 | Tool | Command | Use for | If it fails |
 |---|---|---|---|
+| `quick_check.py` | `python tools/quick_check.py "BTC long, 20x, entry 98,400"` | **First step for any one-line trade question** (asset + side, optionally leverage/entry/stop/targets/equity/risk). Parses the request and runs levels, conviction, structure stop/targets, position math and liquidation in one go | `ERROR: couldn't find an asset` → ask which watchlist symbol (or, in headless mode, report that). `FETCH FAILED` → same fallback as fetch_prices. It doesn't do news or P(T1); add those yourself. |
 | `fetch_prices.py` | `python tools/fetch_prices.py [SYM ...] [--tf 15M 1H 4H 1D 1W]` | Raw OHLCV on the 5 timeframes, UTC-stamped, 3-min cache | Exit 1 / `FETCH FAILED`: retry once with `--no-cache`, then the backup source in `memory/core.md` (F2). Still failing → ask the user for the price and mark every level "as of user input" `[DATA:user]`. Never estimate. |
 | `levels.py` | `python tools/levels.py [SYM ...]` | PDH/PDL, PWH/PWL, PMthH/PMthL, last price, gold spot check | `DATA ERROR` → same as fetch_prices. Spot check unavailable → report the proxy without a spot comparison and say so. |
 | `indicators.py` | `python tools/indicators.py [SYM ...]` | **EMA + VWAP conviction score and grade** (both sides), dynamic EMA/VWAP levels, 4H swings/structure; context: RSI, MACD, ATR, volume trend, alignment score; correlations | A TF shows `FETCH FAILED` → that TF is `n/a` (F4). The grade needs 4H + 1D; without those: `Grade: n/a [MISSING]`. Without 15M/1H the VWAP checks score 0 (max grade B). A correlation shows `n/a` → report `[MISSING]`, never a typical value. |
 | `position_calc.py` | `python tools/position_calc.py --asset .. --side .. --zone LO HI --stop .. --targets .. [--leverage --mmr --fee --equity --risk-pct --atr]` | Blended entry and tranches, R per target, weighted R, liquidation, P&L/ROE, max leverage | `ERROR:` (e.g. stop on the wrong side, leverage beyond MMR) → the plan is invalid: fix the inputs or report "No valid setup". Missing equity/leverage → run without them and mark sizing `[MISSING]` (F1). |
 | `verify.py` | `python tools/verify.py [SYM ...]` | Rebuild 4H from 15M/5M and compare (data integrity) | `CHECK` instead of `PASS` → report the mismatch, lower affected grades one letter (F5), and tell the user. |
 | `log_entry.py` | `python tools/log_entry.py --request .. --symbol .. --side .. --grade .. [--zone --stop --targets --prob] [--note]` | Append one entry per instrument to `memory/sessions.md` | `ERROR:` → fix the fields (it validates zone/stop/target order and needs `--prob` for setups). If it still fails, put the entry text at the end of the report and tell the user it wasn't logged. |
+
+## Quick trade questions
+For a one-line question about a specific trade ("BTC long, 20x, entry 98,400, how does it look?"):
+1. Run `quick_check.py` with the user's text, verbatim.
+2. Check its derived stop and targets against the skills. If you change one, re-run `position_calc.py` with the new numbers.
+3. Add what the tool can't: the macro/event check (ask before searching), `P(T1 before stop)` with a reason, and "What would change this".
+4. Answer in the report format without follow-up questions. Missing inputs follow F1–F6. Log with `log_entry.py`.
+
+Interfaces: `start-ui.cmd` / `python app/server.py` (local web page at http://127.0.0.1:8765), and `ask.ps1` / `ask.sh` / `python app/ask.py` (terminal). "Quick check" runs `quick_check.py` only. "Full agent" runs this agent headlessly with `claude -p` in the repo.
 
 ## Session workflow
 1. **Load context:** core, user preferences and playbook (auto-loaded), plus `memory/markets/<SYMBOL>.md` (and its class file) for each instrument in scope.
