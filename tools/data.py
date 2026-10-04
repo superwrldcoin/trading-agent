@@ -51,11 +51,14 @@ def fetch_okx_candles(inst_id: str, start: pd.Timestamp, bar: str = "4H", max_pa
     return df[~df.index.duplicated()]
 
 
-def fetch_yf_hourly(ticker: str, period: str = "90d") -> pd.DataFrame:
-    """1H candles from yfinance with a UTC index and lowercase OHLCV columns."""
+def fetch_yf_hourly(ticker: str, period: str = "90d", interval: str = "1h") -> pd.DataFrame:
+    """Intraday candles from yfinance (default 1H) with a UTC index and lowercase OHLCV columns.
+
+    yfinance limits: 1h up to 730 days, 15m/5m up to 60 days.
+    """
     import yfinance as yf
 
-    hist = yf.Ticker(ticker).history(period=period, interval="1h", auto_adjust=False)
+    hist = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=False)
     if hist.empty:
         raise RuntimeError(f"yfinance returned no data for {ticker}")
     df = hist.rename(columns=str.lower)[COLUMNS]
