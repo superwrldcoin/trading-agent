@@ -18,7 +18,7 @@ BTC long, 20x, entry 98,400, how does it look?
 
 | Interface | How | What runs |
 |---|---|---|
-| Web page | double-click `start-ui.cmd` (or `python app/server.py`), then open http://127.0.0.1:8765 | **Quick check** (no AI, ~30s on first fetch) or **Full agent** (Claude Code with every skill and memory file, a few minutes) |
+| Web page | double-click `start-ui.cmd` (or `python app/server.py`), then open http://127.0.0.1:8765 | **Quick check** (no AI, ~30s on first fetch) or **Full agent** (Claude Code with every skill and memory file, a few minutes). Live step progress, cancel, run history, price ladder, settings drawer (theme, animations, defaults, shortcuts) |
 | Terminal | `.\ask.ps1 "BTC long 20x entry 98,400"` / `./ask.sh ...`, add `-Agent` / `--agent` for the full agent | same |
 | Claude Code | `cd trading-agent && claude`, then type the question | the agent itself (interactive) |
 

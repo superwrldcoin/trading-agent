@@ -19,8 +19,20 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app import agent  # noqa: E402
+from app.jobs import JobManager  # noqa: E402
 
-INDEX = (Path(__file__).resolve().parent / "index.html").read_text(encoding="utf-8")
+APP_DIR = Path(__file__).resolve().parent
+STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8"}
+JOBS = JobManager()
+
+
+def _read(rel: str) -> bytes:
+    p = (APP_DIR / rel).resolve()
+    if APP_DIR not in p.parents:
+        raise FileNotFoundError(rel)
+    return p.read_bytes()
+
+
 HEADER = "X-Trading-Agent"
 MAX_BODY = 10_000
 
@@ -51,13 +63,57 @@ class Handler(BaseHTTPRequestHandler):
     def _host_ok(self) -> bool:
         return self.headers.get("Host", "") in self._allowed_hosts()
 
+    def _sse(self, job) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        i = 0
+        try:
+            while True:
+                evs, done = job.wait_events(i)
+                for ev in evs:
+                    self.wfile.write(b"data: " + json.dumps(ev).encode("utf-8") + b"\n\n")
+                i += len(evs)
+                if not evs:
+                    self.wfile.write(b": keepalive\n\n")
+                self.wfile.flush()
+                if done:
+                    return
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
+    def _config(self) -> dict:
+        from tools import levels, rules_check
+        cfg = {"watchlist": sorted(levels.WATCHLIST), "claude_cli": bool(agent.claude_path()), "rules": None}
+        try:
+            cfg["rules"] = rules_check.load_rules()
+        except Exception:  # rules are informational in the UI
+            pass
+        return cfg
+
     def do_GET(self):
         if not self._host_ok():
             return self._json(403, {"error": "bad host"})
-        if self.path in ("/", "/index.html"):
-            return self._send(200, INDEX.encode("utf-8"), "text/html; charset=utf-8")
-        if self.path == "/api/health":
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html"):
+            return self._send(200, _read("index.html"), "text/html; charset=utf-8")
+        if path in STATIC:
+            return self._send(200, _read(path.lstrip("/")), STATIC[path])
+        if path == "/api/health":
             return self._json(200, {"ok": True, "claude_cli": bool(agent.claude_path())})
+        if path == "/api/config":
+            return self._json(200, self._config())
+        if path == "/api/history":
+            return self._json(200, {"items": JOBS.history()})
+        if path.startswith("/api/history/"):
+            item = JOBS.history_item(path.rsplit("/", 1)[1])
+            return self._json(200, item) if item else self._json(404, {"error": "not found"})
+        parts = path.strip("/").split("/")
+        if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "events":
+            job = JOBS.get(parts[2])
+            return self._sse(job) if job else self._json(404, {"error": "no such job"})
         return self._json(404, {"error": "not found"})
 
     def do_OPTIONS(self):  # no CORS: cross-origin preflights fail
@@ -81,8 +137,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "invalid JSON"})
         if not text:
             return self._json(400, {"error": "empty request"})
+        parts = self.path.strip("/").split("/")
+        if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "cancel":
+            return self._json(200, {"ok": JOBS.cancel(parts[2])})
+        num = lambda k: float(payload[k]) if payload.get(k) not in (None, "") else None
+        if self.path == "/api/run":
+            kind = str(payload.get("kind", ""))
+            if kind not in ("quick", "agent", "portfolio"):
+                return self._json(400, {"error": "kind must be quick, agent or portfolio"})
+            try:
+                equity, risk = num("equity"), num("risk_pct")
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "equity / risk_pct must be numbers"})
+            return self._json(200, {"id": JOBS.start(kind, text, equity, risk).id})
         if self.path == "/api/quick":
-            num = lambda k: float(payload[k]) if payload.get(k) not in (None, "") else None
             try:
                 equity, risk = num("equity"), num("risk_pct")
             except (TypeError, ValueError):

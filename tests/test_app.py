@@ -183,3 +183,50 @@ def test_run_portfolio_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(positions, "POSITIONS_PATH", tmp_path / "none.json")
     res = agent.run_portfolio()
     assert res["ok"] and "No open positions" in res["markdown"]
+
+def test_static_and_config(srv):
+    for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent")):
+        status, body = request(srv, "GET", p)
+        assert status == 200 and ct in body
+    assert request(srv, "GET", "/static/../server.py")[0] == 404
+    status, body = request(srv, "GET", "/api/config")
+    assert status == 200 and "watchlist" in json.loads(body)
+
+
+def test_job_stream_and_history(srv, monkeypatch, tmp_path):
+    from app.jobs import JobManager
+    monkeypatch.setattr(server, "JOBS", JobManager(tmp_path))
+
+    def fake_quick(text, e=None, r=None, progress=None):
+        progress("fetch", "Fetching")
+        return {"ok": True, "markdown": f"JOB {text}", "seconds": 0.1}
+    monkeypatch.setattr(agent, "run_quick", fake_quick)
+    status, body = request(srv, "POST", "/api/run", {"kind": "quick", "text": "BTC long"}, OK)
+    jid = json.loads(body)["id"]
+    status, body = request(srv, "GET", f"/api/jobs/{jid}/events")
+    events = [json.loads(l[6:]) for l in body.decode().splitlines() if l.startswith("data: ")]
+    assert status == 200 and [e["type"] for e in events if e["type"] != "tick"][-1] == "done"
+    assert any(e.get("id") == "fetch" for e in events)
+    assert events[-1]["result"]["markdown"] == "JOB BTC long"
+    status, body = request(srv, "GET", "/api/history")
+    items = json.loads(body)["items"]
+    assert items and items[0]["id"] == jid
+    status, body = request(srv, "GET", f"/api/history/{jid}")
+    assert json.loads(body)["markdown"] == "JOB BTC long"
+    assert request(srv, "GET", "/api/history/..%2f..")[0] == 404
+
+
+def test_run_guards_and_cancel(srv, monkeypatch, tmp_path):
+    from app.jobs import JobManager
+    monkeypatch.setattr(server, "JOBS", JobManager(tmp_path))
+    release = threading.Event()
+    monkeypatch.setattr(agent, "run_portfolio", lambda: (release.wait(5), {"ok": True, "markdown": "late"})[1])
+    assert request(srv, "POST", "/api/run", {"kind": "bogus", "text": "x"}, OK)[0] == 400
+    assert request(srv, "POST", "/api/run", {"kind": "quick", "text": "x"}, {"X-Trading-Agent": "1"})[0] == 403
+    jid = json.loads(request(srv, "POST", "/api/run", {"kind": "portfolio", "text": "portfolio"}, OK)[1])["id"]
+    status, body = request(srv, "POST", f"/api/jobs/{jid}/cancel", {"text": "cancel"}, OK)
+    assert json.loads(body)["ok"] is True
+    status, body = request(srv, "GET", f"/api/jobs/{jid}/events")
+    assert b'"cancelled"' in body and b'"done"' not in body
+    release.set()
+    assert request(srv, "GET", "/api/jobs/nope/events")[0] == 404

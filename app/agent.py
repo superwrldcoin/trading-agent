@@ -67,11 +67,11 @@ def build_prompt(text: str) -> str:
     return AGENT_PROMPT.format(text=clean, python=venv_python())
 
 
-def run_quick(text: str, equity: float | None = None, risk_pct: float | None = None) -> dict:
+def run_quick(text: str, equity: float | None = None, risk_pct: float | None = None, progress=None) -> dict:
     """Returns {"ok", "markdown", "seconds"}; never raises for user-facing errors."""
     t0 = time.time()
     try:
-        res = quick_check.run(text, equity=equity, risk_pct=risk_pct)
+        res = quick_check.run(text, equity=equity, risk_pct=risk_pct, progress=progress)
         md = quick_check.render(res)
         ok = True
     except quick_check.ParseError as exc:
