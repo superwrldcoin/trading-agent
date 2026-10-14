@@ -459,7 +459,10 @@ def render(a: dict) -> str:
 
 
 def run(text: str, equity: float | None = None, risk_pct: float | None = None,
-        mmr: float | None = None, fee: float | None = None, now: pd.Timestamp | None = None) -> dict:
+        mmr: float | None = None, fee: float | None = None, now: pd.Timestamp | None = None,
+        progress=None) -> dict:
+    step = progress or (lambda *_: None)
+    step("parse", "Reading request")
     req = parse_request(text)
     if equity is not None:
         req["equity"] = equity
@@ -468,9 +471,12 @@ def run(text: str, equity: float | None = None, risk_pct: float | None = None,
     if req["equity"] is not None and req["risk_pct"] is None:
         req["risk_pct"] = 1.0
     cls = "crypto" if levels.WATCHLIST[req["symbol"]].session is levels.CRYPTO else "other"
+    step("fetch", f"Fetching {req['symbol']} candles (15M/1H/4H/1D/1W)")
     frames, errors = fetch_frames(req["symbol"])
+    step("analyze", "Levels, EMA + VWAP conviction, position math, rules")
     out = analyze(req, frames, errors, now or pd.Timestamp.now(tz="UTC"),
                   mmr if mmr is not None else DEFAULTS[cls]["mmr"], fee if fee is not None else DEFAULTS[cls]["fee"])
+    step("context", "Ratios and positioning feeds")
     out["context"] = fetch_context(req["symbol"])
     return out
 
