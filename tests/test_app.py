@@ -185,7 +185,7 @@ def test_run_portfolio_empty(monkeypatch, tmp_path):
     assert res["ok"] and "No open positions" in res["markdown"]
 
 def test_static_and_config(srv):
-    for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent")):
+    for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent"), ("/static/report.js", b"const Report")):
         status, body = request(srv, "GET", p)
         assert status == 200 and ct in body
     assert request(srv, "GET", "/static/../server.py")[0] == 404

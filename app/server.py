@@ -22,7 +22,8 @@ from app import agent  # noqa: E402
 from app.jobs import JobManager  # noqa: E402
 
 APP_DIR = Path(__file__).resolve().parent
-STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8"}
+STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8",
+          "/static/report.js": "application/javascript; charset=utf-8"}
 JOBS = JobManager()
 
 

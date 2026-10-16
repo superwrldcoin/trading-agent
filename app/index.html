@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto" data-anim="on">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,28 +7,39 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<main>
-  <header class="top">
-    <div>
-      <h1>Trading Agent</h1>
-      <p class="sub">Analysis only. <b>Quick check</b>: no AI, cached fetch. <b>Full agent</b>: Claude Code with all skills and memory.</p>
-    </div>
-    <div class="top-actions">
-      <button class="ghost" id="historyBtn" title="Past runs">History</button>
-      <button class="ghost" id="settingsBtn" title="Settings">Settings</button>
-    </div>
-  </header>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
-  <section class="panel" id="inputPanel">
-    <textarea id="q" placeholder="BTC long, 20x, entry 98,400, how does it look?"></textarea>
-    <div class="row" id="chips"></div>
-    <div class="row">
-      <label>Equity <input id="equity" placeholder="optional" inputmode="decimal"></label>
-      <label>Risk % <input id="risk" placeholder="1" inputmode="decimal"></label>
-      <button id="quick">Quick check</button>
-      <button id="agent" class="secondary">Full agent analysis</button>
+<header class="appbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 6-8 3 3"/></svg></span>
+    <div><h1>Trading Agent</h1><p class="sub">Analysis only · you make every trading decision</p></div>
+  </div>
+  <nav class="seg" aria-label="Main">
+    <button class="seg-btn active" id="analyzeBtn" title="New analysis (/)">Analyze</button>
+    <button class="seg-btn" id="historyBtn" title="Past runs (H)">History</button>
+    <button class="seg-btn" id="settingsBtn" title="Settings (,)">Settings</button>
+  </nav>
+  <span class="cli-pill" id="cliPill" hidden></span>
+</header>
+
+<main>
+  <section class="panel composer" id="inputPanel">
+    <div class="field">
+      <textarea id="q" placeholder="BTC long, 20x, entry 98,400, how does it look?" aria-label="Your request"></textarea>
+      <kbd class="hint">Ctrl + Enter</kbd>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="row actions">
+      <label class="mini">Equity <input id="equity" placeholder="optional" inputmode="decimal"></label>
+      <label class="mini">Risk % <input id="risk" placeholder="1" inputmode="decimal"></label>
+      <span class="spacer"></span>
       <button id="portfolio" class="secondary" title="Exposure and stress test for memory/positions.json">Portfolio</button>
+      <button id="agent" class="secondary">Full agent analysis</button>
+      <button id="quick">Quick check</button>
       <button id="cancel" class="danger" hidden>Cancel</button>
+    </div>
+    <div class="row foot">
+      <p class="mode-help"><b>Quick check</b>: no AI, cached data, free. <b>Full agent</b>: Claude Code with all skills and memory.</p>
       <span class="status" id="status" aria-live="polite"></span>
     </div>
   </section>
@@ -39,17 +50,20 @@
   </section>
 
   <section id="skeleton" class="panel" hidden>
-    <div class="sk w40"></div><div class="sk w90"></div><div class="sk w75"></div><div class="sk w60"></div>
+    <div class="sk-hero"><div class="sk w40"></div><div class="sk w60 tall"></div></div>
+    <div class="sk-tiles"><div class="sk box"></div><div class="sk box"></div><div class="sk box"></div><div class="sk box"></div></div>
+    <div class="sk w90"></div><div class="sk w75"></div>
   </section>
 
   <section id="results" hidden>
-    <div class="panel ladder-wrap" id="ladderWrap" hidden><h2>Price ladder</h2><div id="ladder"></div></div>
-    <div class="panel" id="out"></div>
+    <div id="out"></div>
   </section>
 </main>
 
-<aside class="drawer" id="settings" aria-hidden="true">
-  <h2>Settings</h2>
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="drawer" id="settings" aria-hidden="true" aria-label="Settings">
+  <div class="drawer-head"><h2>Settings</h2><button class="icon" data-close aria-label="Close">✕</button></div>
   <label>Default equity <input id="s_equity" inputmode="decimal"></label>
   <label>Default risk % <input id="s_risk" inputmode="decimal"></label>
   <label>Theme
@@ -58,7 +72,7 @@
   <label>Default action
     <select id="s_action"><option value="quick">Quick check</option><option value="agent">Full agent</option></select>
   </label>
-  <label>Symbol shortcuts <select id="s_symbols" multiple size="6"></select></label>
+  <label class="stack">Symbol shortcuts <select id="s_symbols" multiple size="6"></select></label>
   <label class="check"><input type="checkbox" id="s_anim"> Animations</label>
   <label class="check"><input type="checkbox" id="s_ladder"> Price ladder</label>
   <h3>Your rules (read-only)</h3>
@@ -66,11 +80,13 @@
   <div class="row"><button id="saveSettings">Save</button><button class="ghost" data-close>Close</button></div>
 </aside>
 
-<aside class="drawer" id="history" aria-hidden="true">
-  <h2>History</h2>
+<aside class="drawer" id="history" aria-hidden="true" aria-label="History">
+  <div class="drawer-head"><h2>History</h2><button class="icon" data-close aria-label="Close">✕</button></div>
   <ul id="histList"></ul>
-  <div class="row"><button class="ghost" data-close>Close</button></div>
 </aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/report.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
