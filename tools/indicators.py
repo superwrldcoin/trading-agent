@@ -477,13 +477,17 @@ def main(argv: list[str]) -> int:
     for sym in symbols:
         src = levels.WATCHLIST[sym]
         frames, errors = {}, {}
-        for tf in tfs:
-            try:
-                # 1H needs at least a month of bars for the monthly VWAP
-                bars = max(args.bars, HOURLY_BARS_FOR_VWAP) if tf == "1H" else args.bars
-                frames[tf] = fetch_prices.get_ohlcv(sym, tf, bars=bars)
-            except fetch_prices.FetchError as exc:
-                errors[tf], failed = str(exc), True
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(tfs) or 1) as ex:
+            # 1H needs at least a month of bars for the monthly VWAP
+            futs = {tf: ex.submit(fetch_prices.get_ohlcv, sym, tf,
+                                  max(args.bars, HOURLY_BARS_FOR_VWAP) if tf == "1H" else args.bars)
+                    for tf in tfs}
+            for tf, fut in futs.items():
+                try:
+                    frames[tf] = fut.result()
+                except fetch_prices.FetchError as exc:
+                    errors[tf], failed = str(exc), True
         df = frames.get("4H")
         if df is None or len(df) < 2:
             sections.append(f"## {sym}\nDATA ERROR (4H): {errors.get('4H', 'not enough candles')}\n")

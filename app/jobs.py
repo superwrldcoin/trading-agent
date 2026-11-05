@@ -109,24 +109,51 @@ class JobManager:
             stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
             rec = {"id": job.id, "kind": job.kind, "text": job.text, "utc": stamp, "ok": res.get("ok"),
                    "seconds": res.get("seconds"), "cost_usd": res.get("cost_usd"), "markdown": res.get("markdown", "")}
-            (self.history_dir / f"{stamp}_{job.id}.json").write_text(json.dumps(rec), encoding="utf-8")
-            files = sorted(self.history_dir.glob("*.json"))
-            for old in files[:-MAX_HISTORY]:
-                old.unlink()
+            base = self.history_dir / f"{stamp}_{job.id}"
+            base.with_suffix(".json").write_text(json.dumps(rec), encoding="utf-8")
+            meta = {k: v for k, v in rec.items() if k != "markdown"}
+            base.with_suffix(".meta").write_text(json.dumps(meta), encoding="utf-8")
+            files = list(self.history_dir.glob("*.json"))
+            if len(files) > MAX_HISTORY:  # sort only when pruning is needed
+                for old in sorted(files)[:-MAX_HISTORY]:
+                    old.unlink()
+                    old.with_suffix(".meta").unlink(missing_ok=True)
         except OSError:
             pass  # history is a convenience; never fail a run because of it
 
     def history(self, limit: int = 30) -> list[dict]:
+        """List recent runs. Reads the small .meta sidecar, not the full report, falling back for older files."""
         if not self.history_dir.exists():
             return []
         out = []
         for f in sorted(self.history_dir.glob("*.json"), reverse=True)[:limit]:
             try:
-                d = json.loads(f.read_text(encoding="utf-8"))
+                meta = f.with_suffix(".meta")
+                d = json.loads((meta if meta.exists() else f).read_text(encoding="utf-8"))
                 out.append({k: d.get(k) for k in ("id", "kind", "text", "utc", "ok", "seconds", "cost_usd")})
             except (OSError, ValueError):
                 continue
         return out
+
+    def delete_item(self, jid: str) -> bool:
+        if not jid.isalnum() or not self.history_dir.exists():
+            return False
+        hit = False
+        for f in self.history_dir.glob(f"*_{jid}.json"):
+            f.unlink(missing_ok=True)
+            f.with_suffix(".meta").unlink(missing_ok=True)
+            hit = True
+        return hit
+
+    def clear_history(self) -> int:
+        """Delete every saved run (reports and the request text) from disk. Returns the number removed."""
+        if not self.history_dir.exists():
+            return 0
+        n = 0
+        for f in list(self.history_dir.glob("*.json")) + list(self.history_dir.glob("*.meta")):
+            f.unlink(missing_ok=True)
+            n += f.suffix == ".json"
+        return n
 
     def history_item(self, jid: str) -> dict | None:
         if not jid.isalnum():

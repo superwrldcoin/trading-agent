@@ -426,3 +426,9 @@ body.busy button:disabled { cursor:progress; }
 @keyframes nudge { 20%, 60% { transform:translateX(-6px); } 40%, 80% { transform:translateX(6px); } }
 @keyframes toast { 0% { transform:translate(-50%, 140%); opacity:0; } 12%, 85% { transform:translate(-50%, 0); opacity:1; } 100% { transform:translate(-50%, 140%); opacity:0; } }
 :root[data-anim="off"] .toast.show { opacity:1; transform:translate(-50%, 0); }
+
+.notice{position:fixed;left:12px;right:12px;bottom:12px;z-index:50;padding:10px 14px;border-radius:10px;background:#1b2330;color:#dbe4f0;font-size:13px;display:flex;gap:12px;align-items:center}
+.notice[hidden]{display:none}
+.notice a,.foot a{color:inherit;text-decoration:underline}
+.foot{padding:16px;text-align:center;font-size:12px;opacity:.7}
+.h-del{margin-left:auto;padding:2px 8px}

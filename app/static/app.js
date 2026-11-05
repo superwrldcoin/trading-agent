@@ -130,10 +130,21 @@ async function openHistory(){
     li.innerHTML = `<span class="h-icon k-${esc(it.kind)}">${icon[it.kind] || "•"}</span><span class="h-body"><b>${esc(String(it.text).slice(0, 70))}</b>` +
       `<small>${esc(it.kind)} · ${esc(ago(it.utc))}${it.ok ? "" : ' · <span class="st st-fail">✕ failed</span>'}</small></span>`;
     const open = async () => { const d = await (await fetch("/api/history/" + it.id)).json(); closeDrawers(); showResult(d); };
-    li.onclick = open; li.onkeydown = e => { if (e.key === "Enter") open(); };
+    const del = document.createElement("button"); del.className = "ghost h-del"; del.textContent = "✕"; del.title = "Delete this run"; del.setAttribute("aria-label", "Delete this run");
+    del.onclick = async e => { e.stopPropagation(); try { await post("/api/history/" + it.id + "/delete", {}); openHistory(); } catch(err){ toast("Delete failed"); } };
+    li.appendChild(del);
+    li.onclick = open; li.onkeydown = e => { if (e.key === "Enter" && e.target === li) open(); };
     list.appendChild(li);
   });
 }
+
+$("#clearHist").onclick = async () => {
+  if (!confirm("Delete all saved runs and cached market data? This cannot be undone.")) return;
+  try { await post("/api/history/clear", {}); toast("History deleted"); openHistory(); } catch(e){ toast("Delete failed"); }
+};
+const notice = $("#notice");
+notice.hidden = !!localStorage.getItem("ta_notice");
+$("#noticeOk").onclick = () => { localStorage.setItem("ta_notice", "1"); notice.hidden = true; };
 
 $("#quick").onclick = () => run("quick"); $("#agent").onclick = () => run("agent"); $("#portfolio").onclick = () => run("portfolio");
 $("#cancel").onclick = cancel; $("#settingsBtn").onclick = openSettings; $("#historyBtn").onclick = openHistory;
