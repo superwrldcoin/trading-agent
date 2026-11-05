@@ -15,12 +15,17 @@ Flag scheduled events and cross-market drivers that could invalidate a technical
 | SI | Gold (+, strong), DXY (−), industrial/risk sentiment (+) | Same as gold, plus China PMI |
 | MSFT | Nasdaq-100 (+), 10Y yield (− for growth stocks) | MSFT earnings, CPI, FOMC, big-tech earnings |
 | BCH/USDT | BTC (+, strong), overall crypto risk appetite | US macro prints, BTC/crypto-specific events |
+| ETH/USDT, SOL/USDT | BTC (+, strong), Nasdaq (+), DXY (−) | Same as BTC, plus network upgrades and token unlocks |
+| XRP/USDT | BTC (+), XRP-specific headlines | Same as BTC, plus SEC/court rulings and ETF news (headline gaps) |
+| MNQ, MES | 10Y yield (−), VIX (−), mega-cap earnings (NQ) | CPI, FOMC, NFP, NVDA/MSFT/AAPL earnings, quarterly roll (Mar/Jun/Sep/Dec) |
+| MGC | Same as XAU/USD; futures sit above spot (carry) | Same as gold, plus COMEX roll |
+| MCL | DXY (−), risk appetite (+), supply news | EIA inventories Wed 10:30 ET, API Tue evening, OPEC+ meetings, monthly roll |
 
 The signs are typical relationships, not rules. Always measure the current correlation instead of assuming it.
 
 **Source of truth:** the drivers, pairs and ratios for each instrument live in `memory/universe.yaml` (its `context` map), not in this table. `tools/indicators.py` correlates each core instrument with its listed drivers and pairs (30-day daily returns; `^TNX`, `^VIX` and the FRED real yield `DFII10` by change in level). Extra context per instrument:
-- **Ratios** (`python tools/ratios.py --for <SYM>`): e.g. gold/silver for SI, SLV and GLD; BCH/BTC for BCH; MSFT/QQQ for MSFT; GDX/GLD for gold. A ratio trending against the setup (e.g. BCH/BTC falling while you're long BCH) goes in the bear case.
-- **Crypto positioning** (`python tools/crypto_feeds.py <SYM>`): funding, open interest, long/short ratio, BTC dominance. Crowded positioning (funding ≥ 0.05%/8h or long/short ≥ 2) argues against chasing in the crowded direction. Context only, never part of the grade.
+- **Ratios** (`python tools/ratios.py --for <SYM>`): e.g. gold/silver for SI, SLV and GLD; BCH/BTC, SOL/BTC, XRP/BTC for those coins; MSFT/QQQ for MSFT; NQ/ES for MNQ, MES and MSFT; Brent/WTI for MCL; GDX/GLD for gold. A ratio trending against the setup (e.g. BCH/BTC falling while you're long BCH) goes in the bear case.
+- **Crypto positioning** (`python tools/crypto_feeds.py <SYM>`): funding, open interest, long/short ratio, BTC dominance, and perp-vs-spot basis. The user trades OKX perps, which fill and liquidate on the perp and its mark price, while levels come from spot: a basis above 0.15% means shift spot levels by it before quoting perp orders. Crowded positioning (funding ≥ 0.05%/8h or long/short ≥ 2) argues against chasing in the crowded direction. Context only, never part of the grade.
 - **VIX regime:** a VIX spike coincides with leveraged-asset drawdowns. Mention it when it's rising sharply on the day.
 
 ## Procedure
