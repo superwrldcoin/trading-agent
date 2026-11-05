@@ -33,6 +33,13 @@ from tools import position_calc as pc  # noqa: E402
 ALIASES = [  # longest / most specific first
     (r"bitcoin\s*cash|\bbch\b", "BCH/USDT"),
     (r"\bbitcoin\b|\bbtc\b|\bxbt\b", "BTC/USDT"),
+    (r"\beth(?:ereum)?\b|\bether\b", "ETH/USDT"),
+    (r"\bsol(?:ana)?\b", "SOL/USDT"),
+    (r"\bxrp\b|\bripple\b", "XRP/USDT"),
+    (r"\bmcl\b|\bcl\b|\bwti\b|\bcrude(?:\s*oil)?\b|\boil\b", "MCL"),
+    (r"\bmnq\b|\bnq\b|\bnasdaq\b|\bnas\s*100\b|\bndx\b", "MNQ"),
+    (r"\bmes\b|\bes\b|\bs\s*&\s*p(?:\s*500)?\b|\bspx\b|\bsp\s*500\b", "MES"),
+    (r"\bmgc\b|\bgc\b|\bgold\s*futures?\b|\bmicro\s*gold\b", "MGC"),     # before plain "gold" (spot)
     (r"\bxau\s*/?\s*usd\b|\bxau\b|\bgold\b|\bspot\s*gold\b", "XAU/USD"),
     (r"\bgld\b", "GLD"),
     (r"\bslv\b", "SLV"),
@@ -155,17 +162,17 @@ def derive_stop(side: str, entry: float, df4: pd.DataFrame, df1d: pd.DataFrame |
     if not ser.empty:
         t, v = ser.index[-1], float(ser.iloc[-1])
         if abs(entry - v) <= 4 * atr14:
-            return v + sign * 0.5 * atr14, f"most recent 4H swing {kind} {v:,.2f} ({t:%m-%d %H:%M}) {'-' if sign < 0 else '+'} 0.5 ATR", False
+            return v + sign * 0.5 * atr14, f"most recent 4H swing {kind} {_f(v)} ({t:%m-%d %H:%M}) {'-' if sign < 0 else '+'} 0.5 ATR", False
     if df1d is not None and len(df1d) > 5:
         hi1, lo1 = indicators.swings(df1d)
         d = lo1[lo1 < entry] if side == "long" else hi1[hi1 > entry]
         if not d.empty:
             idx = d.idxmax() if side == "long" else d.idxmin()
             v = float(d.loc[idx])
-            return v + sign * 0.5 * atr14, f"nearest 1D swing {kind} {v:,.2f} ({idx:%Y-%m-%d}) {'-' if sign < 0 else '+'} 0.5 ATR", True
+            return v + sign * 0.5 * atr14, f"nearest 1D swing {kind} {_f(v)} ({idx:%Y-%m-%d}) {'-' if sign < 0 else '+'} 0.5 ATR", True
     if not ser.empty:
         t, v = ser.index[-1], float(ser.iloc[-1])
-        return v + sign * 0.5 * atr14, f"most recent 4H swing {kind} {v:,.2f} ({t:%m-%d %H:%M}) {'-' if sign < 0 else '+'} 0.5 ATR", False
+        return v + sign * 0.5 * atr14, f"most recent 4H swing {kind} {_f(v)} ({t:%m-%d %H:%M}) {'-' if sign < 0 else '+'} 0.5 ATR", False
     return None
 
 
@@ -218,7 +225,7 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
     entry = req["entry"]
     if entry is None:
         entry = price
-        assume.append(f"entry not given: using current price {price:,.2f}")
+        assume.append(f"entry not given: using current price {_f(price)}")
     out["entry"] = entry
     dist_atr = (entry - price) / atr14
     out["entry_dist_pct"], out["entry_dist_atr"] = (entry / price - 1) * 100, dist_atr
@@ -231,7 +238,7 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
         out["entry_type"] = "pullback / limit entry"
     if abs(dist_atr) > 3:
         flags.append(("warn", f"entry is {out['entry_dist_pct']:+.2f}% ({dist_atr:+.1f} ATR) from the current price "
-                              f"{price:,.2f}. Is this a stale or mistyped price? Levels below are computed for your entry"))
+                              f"{_f(price)}. Is this a stale or mistyped price? Levels below are computed for your entry"))
 
     stop, stop_src = req["stop"], "your stop"
     if stop is None:
@@ -267,15 +274,15 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
     out["max_leverage_1atr"] = pc.max_leverage(side, entry, stop, mmr, atr14)
     out["stop_width_atr"] = abs(entry - stop) / atr14
     if s * (entry - stop) <= 0:
-        flags.append(("fail", f"stop {stop:,.2f} is on the wrong side of entry {entry:,.2f} for a {side}"))
+        flags.append(("fail", f"stop {_f(stop)} is on the wrong side of entry {_f(entry)} for a {side}"))
         out["verdict"] = "Fails: stop on the wrong side of entry"
         return out
     if s * (liq - stop) >= 0:
-        flags.append(("fail", f"liquidation {liq:,.2f} is hit BEFORE the stop {stop:,.2f} at {leverage:g}x. "
+        flags.append(("fail", f"liquidation {_f(liq)} is hit BEFORE the stop {_f(stop)} at {leverage:g}x. "
                               f"Max leverage that keeps liquidation 1 ATR beyond the stop: "
                               f"{out['max_leverage_1atr']:.1f}x"))
     elif abs(stop - liq) < atr14:
-        flags.append(("warn", f"liquidation {liq:,.2f} is only {abs(stop - liq) / atr14:.2f} ATR beyond the stop "
+        flags.append(("warn", f"liquidation {_f(liq)} is only {abs(stop - liq) / atr14:.2f} ATR beyond the stop "
                               f"(< 1 ATR). Max leverage for a 1 ATR buffer: {out['max_leverage_1atr']:.1f}x"))
     out["vol"] = None
     if leverage > 1 and frames.get("1D") is not None and len(frames["1D"]) > 60:
@@ -293,9 +300,14 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
         grade = {"A": "B", "B": "C", "C": "C"}[grade]
 
     if targets:
+        spec = pc.contract_spec(symbol) or {}
         res = pc.compute(pc.Plan(asset=symbol, side=side, entry=entry, stop=stop, targets=[t for t, _ in targets],
                                  leverage=leverage, mmr=mmr, fee=fee, equity=req["equity"], risk_pct=req["risk_pct"]
-                                 if req["equity"] else None, atr=atr14))
+                                 if req["equity"] else None, atr=atr14,
+                                 contract_size=spec.get("multiplier"), contract_name=spec.get("name")))
+        for n in res["notes"]:
+            if n.startswith("FAIL: the risk budget") or n.startswith("sizing rounds down"):
+                flags.append(("fail" if n.startswith("FAIL") else "info", n.removeprefix("FAIL: ")))
         out["position"] = res
         if res["weighted_R"] < 2:
             flags.append(("warn", f"weighted R {res['weighted_R']:.2f} is below the 2.0 minimum"))
@@ -356,7 +368,8 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
 # ---------- rendering ----------
 
 def _f(x, nd=2):
-    return "n/a" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x:,.{nd}f}"
+    from tools import fmt
+    return fmt.num(float(x) if x is not None else None, nd)
 
 
 def render(a: dict) -> str:
@@ -404,6 +417,11 @@ def render(a: dict) -> str:
             lines.append(f"\nWeighted R {pos['weighted_R']:.2f} | stop width {a['stop_width_atr']:.2f} ATR | "
                          f"max leverage for 1 ATR liq buffer {_f(a['max_leverage_1atr'], 1)}x | "
                          f"units {_f(pos['units'], 4)}, margin {_f(pos['margin'])} [CALC]")
+            c = pos.get("contracts")
+            if c:
+                lines.append(f"Contracts: " + (f"{c['whole']} {c['name']} (exact {c['exact']:.2f})" if c["sized"]
+                             else f"size [MISSING] (give equity and risk %)")
+                             + f"; 1 {c['name']} = {c['size']:g} units, risks {_f(c['risk_per_contract'])} to the stop [CALC]")
         elif a.get("max_leverage_1atr") is not None:
             lines.append(f"\nStop width {a['stop_width_atr']:.2f} ATR | max leverage for 1 ATR liq buffer "
                          f"{_f(a['max_leverage_1atr'], 1)}x [CALC]")

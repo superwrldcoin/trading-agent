@@ -71,6 +71,13 @@ def fake_get(url, params=None, timeout=None):
         return FakeResp({"code": "0", "data": [["1791151200000", "2.4"]] + [["1791147600000", "1.9"]] * 30})
     if "coingecko" in url:
         return FakeResp({"data": {"market_cap_percentage": {"btc": 59.3}, "market_cap_change_percentage_24h_usd": -1.9}})
+    if url.endswith("/market/ticker"):
+        return FakeResp({"code": "0", "data": [{"last": "86520" if params["instId"].endswith("SWAP") else "86400"}]})
+    if url.endswith("/public/mark-price"):
+        return FakeResp({"code": "0", "data": [{"markPx": "86510"}]})
+    if url.endswith("/public/instruments"):
+        return FakeResp({"code": "0", "data": [{"ctVal": "0.01", "ctValCcy": "BTC", "lotSz": "0.01", "minSz": "0.01",
+                                                "lever": "100"}]})
     raise AssertionError(url)
 
 
@@ -83,8 +90,11 @@ def test_crypto_feeds_with_fake_api(monkeypatch):
     assert f["open_interest"]["chg_7d_pct"] is None and "unavailable" in f["open_interest"]["history_note"]
     assert f["long_short_ratio"]["reading"].startswith("most accounts long")
     assert f["btc_dominance"]["btc_dominance_pct"] == 59.3
+    pb = f["perp_basis"]
+    assert pb["inst"] == "BTC-USDT-SWAP" and pb["basis_pct"] == pytest.approx((86520 / 86400 - 1) * 100)
+    assert pb["ct_val"] == 0.01 and pb["reading"].startswith("perp tracks spot")   # 0.139% < 0.15%
     text = cf.render(r)
-    assert "Funding" in text and "never changes the grade" in text
+    assert "Funding" in text and "never changes the grade" in text and "1 contract = 0.01 BTC" in text
 
 
 def test_bch_feeds_follow_universe_and_errors_are_soft(monkeypatch):
@@ -94,7 +104,7 @@ def test_bch_feeds_follow_universe_and_errors_are_soft(monkeypatch):
         return fake_get(url, params, timeout)
     monkeypatch.setattr(cf.requests, "get", flaky)
     r = cf.run("BCH/USDT")
-    assert set(r["feeds"]) == {"funding_rate", "open_interest", "btc_dominance"}   # no long_short in BCH's context
+    assert set(r["feeds"]) == {"funding_rate", "open_interest", "btc_dominance", "perp_basis"}  # no long_short for BCH
     assert "error" in r["feeds"]["btc_dominance"]
     with pytest.raises(ValueError, match="not a crypto"):
         cf.run("MSFT")

@@ -21,6 +21,9 @@ def test_parse_deribit_name():
     assert op.parse_deribit_name("BTC-27NOV26-73000-P") == ("2026-11-27", 73000.0, "put")
     assert op.parse_deribit_name("BTC-5OCT26-90000-C") == ("2026-10-05", 90000.0, "call")
     assert op.parse_deribit_name("BTC-PERPETUAL") is None
+    assert op.parse_deribit_name("ETH-26DEC26-4000-C", "ETH") == ("2026-12-26", 4000.0, "call")
+    assert op.parse_deribit_name("BTC-26DEC26-90000-C", "ETH") is None
+    assert op.UNDERLYING["ETH/USDT"][:2] == ("deribit", "ETH") and op.UNDERLYING["MNQ"][1] == "QQQ"
 
 
 def test_pick_expiry():

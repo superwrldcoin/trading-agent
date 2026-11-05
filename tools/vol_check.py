@@ -104,7 +104,8 @@ def analyze(daily: pd.DataFrame, df4: pd.DataFrame, side: str, entry: float, lev
 
 
 def render(symbol: str, r: dict) -> str:
-    f = lambda x, nd=2: "n/a" if x is None else f"{x:,.{nd}f}"
+    from tools import fmt
+    f = fmt.num
     pct = lambda p: "n/a" if p is None else f"{p:.1%}"
     lines = [f"### Leverage vs volatility: {symbol} {r['side']} {r['leverage']:g}x from {f(r['entry'])}", "",
              f"Liquidation {f(r['liquidation'])}: {r['liq_dist_pct']:.2f}% away = {r['liq_atr_4h']:.2f} x 4H ATR "

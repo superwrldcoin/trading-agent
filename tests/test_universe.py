@@ -8,8 +8,14 @@ from tools import levels, universe
 def test_repo_universe_structure():
     u = universe.load()
     ids = [c["id"] for c in u["core"]]
-    assert ids == ["BTC/USDT", "BCH/USDT", "XAU/USD", "SI", "SLV", "GLD", "MSFT"]
-    assert len(u["drivers"]) == 5 and len(u["pairs"]) == 8 and len(u["ratios"]) == 5
+    assert ids == ["BTC/USDT", "BCH/USDT", "XAU/USD", "SI", "SLV", "GLD", "MSFT",
+                   "ETH/USDT", "SOL/USDT", "MNQ", "MES", "MGC", "XRP/USDT", "MCL"]
+    assert len(u["drivers"]) == 5 and len(u["pairs"]) == 7 and len(u["ratios"]) == 9
+    symbols = [e["symbol"] for _, e in universe.entries()]
+    assert len(symbols) == len(set(symbols))                                 # promoted pairs aren't listed twice
+    for r in u["ratios"]:                                                    # every ratio leg resolves to an entry
+        for leg in r["formula"].split("/"):
+            assert universe.entry(leg.strip()) is not None, leg
     assert set(u["context"]) == set(ids)
     for c in u["core"]:
         assert c["session"] in levels.SESSIONS
@@ -29,7 +35,20 @@ def test_themes_and_lookup_helpers():
     assert universe.core_symbol_to_id()["BCH-USD"] == "BCH/USDT"
     assert universe.entry("DFII10")[0] == "driver" and universe.entry("XLK")[0] == "pair"
     assert universe.daily_symbol(universe.core_by_id()["BTC/USDT"]) == "BTC-USD"
-    assert universe.context("MSFT")["ratios"] == ["msft_qqq"]
+    assert universe.context("MSFT")["ratios"] == ["msft_qqq", "nq_es"]
+
+
+def test_tier1_futures_and_perps():
+    assert universe.themes()["MNQ"] == universe.themes()["MES"] == "equity index futures"
+    assert universe.themes()["MGC"] == "precious metals" and universe.themes()["SOL/USDT"] == "crypto"
+    assert {k: universe.contract(k)["multiplier"] for k in ("MNQ", "MES", "MGC", "MCL")} == {
+        "MNQ": 2, "MES": 5, "MGC": 10, "MCL": 100}
+    assert universe.themes()["MCL"] == "energy" and universe.themes()["XRP/USDT"] == "crypto"
+    assert universe.contract("BTC/USDT") is None and universe.perp("MNQ") is None
+    for cid in ("BTC/USDT", "BCH/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"):
+        assert universe.perp(cid) == universe.core_by_id()[cid]["feed"]["instrument"] + "-SWAP"
+    assert levels.WATCHLIST["MNQ"].session is levels.CME and levels.WATCHLIST["MNQ"].instrument == "NQ=F"
+    assert levels.WATCHLIST["SOL/USDT"].backup.instrument == "SOL-USD"
 
 
 def test_set_status_preserves_comments(tmp_path):

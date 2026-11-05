@@ -18,7 +18,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 UNIVERSE_PATH = ROOT / "memory" / "universe.yaml"
-THEME_BY_CLASS = {"crypto": "crypto", "metals": "precious metals", "equity": "equities"}
+THEME_BY_CLASS = {"crypto": "crypto", "metals": "precious metals", "equity": "equities",
+                  "equity_index": "equity index futures", "energy": "energy"}
 LEVEL_DRIVERS = {"^TNX", "^VIX", "DFII10"}  # rates / vol indexes: correlate by change in level, not % change
 
 
@@ -69,6 +70,18 @@ def entry(symbol: str, path: Path | None = None) -> tuple[str, dict] | None:
         if e["symbol"] == symbol or e.get("id") == symbol:
             return role, e
     return None
+
+
+def contract(core_id: str, path: Path | None = None) -> dict | None:
+    """Futures contract spec for a core id (name, multiplier = underlying units per contract), or None."""
+    e = core_by_id(path).get(core_id)
+    return (e or {}).get("contract")
+
+
+def perp(core_id: str, path: Path | None = None) -> str | None:
+    """OKX perpetual instrument the user trades for a crypto core id, or None."""
+    e = core_by_id(path).get(core_id)
+    return ((e or {}).get("perp") or {}).get("instrument")
 
 
 def daily_symbol(core_entry: dict) -> str:
@@ -137,6 +150,11 @@ def verify_symbol(role: str, e: dict, now) -> tuple[bool, str]:
                 spot = data.fetch_swissquote_mid(sc["base"], sc["quote"])
                 prem = (df["close"].iloc[-1] / spot - 1) * 100
                 notes.append(f"vs Swissquote spot {spot:,.2f} ({prem:+.2f}%)")
+            if e.get("perp"):
+                inst = e["perp"]["instrument"]
+                spec = data.fetch_okx_swap_spec(inst)
+                last = data.fetch_okx_last(inst)
+                notes.append(f"perp {inst} last {last:,.2f}, 1 contract = {spec['ct_val']:g} {spec['ct_val_ccy']}")
             if e.get("backup"):
                 b = data.fetch_yf_daily_close(e["backup"]["symbol"], period="10d")
                 notes.append(f"backup {e['backup']['symbol']} OK ({b.iloc[-1]:,.2f})")
@@ -161,6 +179,9 @@ def verify_symbol(role: str, e: dict, now) -> tuple[bool, str]:
             r = daily.pct_change().abs()
             big = int((r > 0.04).sum())
             notes.append(f"continuous contract: {big} daily moves > 4% in the window (check for roll gaps before using levels across them)")
+        if e.get("contract"):
+            c = e["contract"]
+            notes.append(f"{c['name']} = {c['multiplier']:g} x {c.get('unit', 'point')}")
         return ok, "; ".join(notes)
     except Exception as exc:
         return False, f"FAILED: {str(exc)[:160]}"

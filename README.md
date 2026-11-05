@@ -5,8 +5,10 @@ previous day/week/month liquidity levels (PDH/PDL, PWH/PWL, PMthH/PMthL), grades
 **EMA + VWAP**, and checks position math (R:R, liquidation, sizing), all from live public data.
 It never places trades and never asks for or stores API keys.
 
-Watchlist (from `memory/universe.yaml`): BTC/USDT, BCH/USDT (OKX, yfinance backup), XAU/USD (OKX Tether Gold proxy,
-cross-checked against spot), SI (COMEX silver futures), SLV, GLD, MSFT (yfinance), plus 5 macro drivers and 8 pair instruments.
+Watchlist (from `memory/universe.yaml`): BTC/USDT, BCH/USDT, ETH/USDT, SOL/USDT, XRP/USDT (OKX spot for levels, OKX
+USDT perps for funding/OI/basis, yfinance backup), XAU/USD (OKX Tether Gold proxy, cross-checked against spot), SI
+(COMEX silver futures), SLV, GLD, MSFT (yfinance), and CME/NYMEX micros MNQ, MES, MGC, MCL (priced from NQ=F, ES=F,
+GC=F, CL=F; position math reports whole contracts), plus 5 macro drivers and 7 pair instruments.
 
 > Not financial advice. Outputs are analysis; you make and execute every decision.
 

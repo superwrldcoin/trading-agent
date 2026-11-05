@@ -131,7 +131,8 @@ def plan(side: str, stages: list[tuple[float, float]], stop: float, targets: lis
 
 
 def render(asset: str, p: dict) -> str:
-    f = lambda x, nd=2: "n/a" if x is None else f"{x:,.{nd}f}"
+    from tools import fmt
+    f = fmt.num
     tl = " / ".join(f"T{i + 1} {f(t)} ({w:.0%})" for i, (t, w) in enumerate(zip(p["targets"], p["weights"])))
     lines = [f"### Trade plan: {asset} {p['side']} {p['leverage']:g}x, stop {f(p['stop'])}, targets {tl}", "",
              "| After stage | Fill | Size | Cum size | Avg entry | Margin | Liquidation | Risk to stop | "

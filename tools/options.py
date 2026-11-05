@@ -36,8 +36,14 @@ UNDERLYING = {  # watchlist symbol -> (provider, ticker, multiplier, note)
     "XAU/USD": ("yfinance", "GLD", 100, "spot gold has no listed options here: GLD options used as the proxy"),
     "SI": ("yfinance", "SLV", 100, "COMEX silver options aren't available keyless: SLV (iShares Silver) options used as the proxy"),
     "BTC/USDT": ("deribit", "BTC", 1, "Deribit BTC options: premiums quoted in BTC, shown in USD; 1 contract = 1 BTC"),
+    "ETH/USDT": ("deribit", "ETH", 1, "Deribit ETH options: premiums quoted in ETH, shown in USD; 1 contract = 1 ETH"),
+    "MNQ": ("yfinance", "QQQ", 100, "CME Nasdaq futures options aren't available keyless: QQQ options used as the proxy (QQQ ~ NDX / 40)"),
+    "MES": ("yfinance", "SPY", 100, "CME S&P futures options aren't available keyless: SPY options used as the proxy (SPY ~ SPX / 10)"),
+    "MGC": ("yfinance", "GLD", 100, "COMEX gold options aren't available keyless: GLD options used as the proxy"),
+    "MCL": ("yfinance", "USO", 100, "NYMEX crude options aren't available keyless: USO options used as a rough proxy "
+                                    "(USO holds rolled futures and drifts from spot WTI over time: compare in % moves, not price)"),
 }
-DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option"
+DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency"
 TIMEOUT = 15
 
 
@@ -65,20 +71,21 @@ def fetch_yf_chain(ticker: str, expiry: str | None, dte: int | None, now: pd.Tim
     return pd.DataFrame(rows), spot, exp
 
 
-def parse_deribit_name(name: str) -> tuple[str, float, str] | None:
-    m = re.match(r"BTC-(\d{1,2}[A-Z]{3}\d{2})-(\d+)-([CP])$", name)
+def parse_deribit_name(name: str, ccy: str = "BTC") -> tuple[str, float, str] | None:
+    m = re.match(rf"{ccy}-(\d{{1,2}}[A-Z]{{3}}\d{{2}})-(\d+)-([CP])$", name)
     if not m:
         return None
     exp = pd.to_datetime(m.group(1), format="%d%b%y").strftime("%Y-%m-%d")
     return exp, float(m.group(2)), "call" if m.group(3) == "C" else "put"
 
 
-def fetch_deribit_chain(expiry: str | None, dte: int | None, now: pd.Timestamp) -> tuple[pd.DataFrame, float, str]:
-    resp = requests.get(DERIBIT_URL, timeout=TIMEOUT)
+def fetch_deribit_chain(expiry: str | None, dte: int | None, now: pd.Timestamp,
+                        ccy: str = "BTC") -> tuple[pd.DataFrame, float, str]:
+    resp = requests.get(DERIBIT_URL, params={"currency": ccy, "kind": "option"}, timeout=TIMEOUT)
     resp.raise_for_status()
     rows = []
     for r in resp.json()["result"]:
-        p = parse_deribit_name(r["instrument_name"])
+        p = parse_deribit_name(r["instrument_name"], ccy)
         if not p:
             continue
         u = float(r.get("underlying_price") or 0)
@@ -87,7 +94,7 @@ def fetch_deribit_chain(expiry: str | None, dte: int | None, now: pd.Timestamp) 
                      "last": usd(r.get("mark_price")), "iv": float(r.get("mark_iv") or 0) / 100, "oi": float(r.get("open_interest") or 0),
                      "underlying": u})
     if not rows:
-        raise OptionsError("Deribit returned no BTC options")
+        raise OptionsError(f"Deribit returned no {ccy} options")
     df = pd.DataFrame(rows)
     exp = pick_expiry(sorted(df["expiry"].unique()), expiry, dte, now)
     sub = df[df["expiry"] == exp].drop(columns="expiry")
@@ -113,10 +120,10 @@ def years_to(expiry: str, now: pd.Timestamp) -> float:
 
 def load_chain(symbol: str, expiry: str | None, dte: int | None, now: pd.Timestamp) -> dict:
     if symbol not in UNDERLYING:
-        raise OptionsError(f"no options source for {symbol} (BCH has no listed options). Supported: {', '.join(UNDERLYING)}")
+        raise OptionsError(f"no options source for {symbol} (BCH has no listed options; no keyless SOL or XRP source). Supported: {', '.join(UNDERLYING)}")
     prov, ticker, mult, note = UNDERLYING[symbol]
     try:
-        df, spot, exp = (fetch_deribit_chain(expiry, dte, now) if prov == "deribit"
+        df, spot, exp = (fetch_deribit_chain(expiry, dte, now, ticker) if prov == "deribit"
                          else fetch_yf_chain(ticker, expiry, dte, now))
     except OptionsError:
         raise

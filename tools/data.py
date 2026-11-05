@@ -1,7 +1,8 @@
 """Market data fetchers. All network access lives here so analysis code can be tested on fixtures.
 
 Sources (all keyless, see memory/core.md):
-- OKX public market API: native 4H candles for XAUT-USDT (gold proxy) and BCH-USDT.
+- OKX public market API: native candles for the crypto spot pairs and XAUT-USDT (gold proxy); ticker, mark price
+  and contract spec for the USDT perpetuals the user trades.
 - yfinance: 1H candles for MSFT and SI=F, resampled to 4H in tools/levels.py.
 - Swissquote public quote feed: live spot XAU/USD bid/ask, used only to cross-check XAUT.
 """
@@ -49,6 +50,35 @@ def fetch_okx_candles(inst_id: str, start: pd.Timestamp, bar: str = "4H", max_pa
             break
     df = parse_okx_candles(rows)
     return df[~df.index.duplicated()]
+
+
+OKX_API = "https://www.okx.com/api/v5"
+
+
+def _okx_get(path: str, params: dict) -> list[dict]:
+    resp = requests.get(f"{OKX_API}{path}", params=params, timeout=TIMEOUT)
+    resp.raise_for_status()
+    payload = resp.json()
+    if payload.get("code") != "0" or not payload.get("data"):
+        raise RuntimeError(f"OKX {path} {params}: {payload.get('msg') or 'no data'}")
+    return payload["data"]
+
+
+def fetch_okx_last(inst_id: str) -> float:
+    """Last traded price for a spot pair or a swap."""
+    return float(_okx_get("/market/ticker", {"instId": inst_id})[0]["last"])
+
+
+def fetch_okx_mark(inst_id: str) -> float:
+    """Mark price of a swap (OKX liquidates on mark, not last)."""
+    return float(_okx_get("/public/mark-price", {"instType": "SWAP", "instId": inst_id})[0]["markPx"])
+
+
+def fetch_okx_swap_spec(inst_id: str) -> dict:
+    """Contract spec of an OKX swap: ctVal (coins per contract), lotSz, minSz, maxLever."""
+    d = _okx_get("/public/instruments", {"instType": "SWAP", "instId": inst_id})[0]
+    return {"ct_val": float(d["ctVal"]), "ct_val_ccy": d["ctValCcy"], "lot_sz": float(d["lotSz"]),
+            "min_sz": float(d["minSz"]), "max_lever": float(d["lever"]) if d.get("lever") else None}
 
 
 def fetch_yf_hourly(ticker: str, period: str = "90d", interval: str = "1h") -> pd.DataFrame:

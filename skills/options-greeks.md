@@ -4,7 +4,7 @@
 Analyze options on the watchlist: read the chain (IV, expected move, skew, liquidity), and break a position (one or more legs) down into greeks, breakevens, max profit and loss, a model probability of profit, and P&L by spot move and time. The user trades options (stated 2026-10-04).
 
 ## Required inputs
-- Underlying (supported): MSFT, GLD (yfinance); BTC (Deribit, premiums converted from BTC to USD, 1 contract = 1 BTC); gold (XAU/USD) uses **GLD options as a proxy**; silver (SI) uses **SLV options as a proxy**. BCH has no listed options.
+- Underlying (supported): MSFT, GLD (yfinance); BTC (Deribit, premiums converted from BTC to USD, 1 contract = 1 BTC); gold (XAU/USD) uses **GLD options as a proxy**; silver (SI) uses **SLV options as a proxy**; ETH (Deribit, 1 contract = 1 ETH). The CME micros use ETF proxies: MNQ → **QQQ** (≈ NDX / 40), MES → **SPY** (≈ SPX / 10), MGC → **GLD**, MCL → **USO** (rolled futures that drift from spot WTI: compare % moves, not prices). BCH, SOL and XRP have no keyless options source.
 - For a position: each leg as `long|short call|put STRIKE YYYY-MM-DD @PREMIUM xQTY [iv=0.30]`
 - Tools: `python tools/options.py chain <SYM> [--dte N | --expiry D]` and `python tools/options.py analyze --symbol <SYM> --leg "..." [--leg "..."]`. For open option positions, use `positions.py add-option`, then `portfolio.py` covers delta exposure and stress.
 

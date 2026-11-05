@@ -2,6 +2,9 @@
 
 Formulas follow skills/leveraged-position-math.md and skills/risk-and-sizing.md
 (isolated margin, linear USDT-style contracts). Math only: never places orders.
+Futures (MNQ, MES, MGC): units are underlying units (index points x multiplier); the contract spec comes from
+memory/universe.yaml and the output adds whole contracts. CME has no exchange liquidation price: treat the
+liquidation line as the broker's margin-call level, approximated from leverage and MMR.
 
 Usage examples:
   python tools/position_calc.py --asset BCH/USDT --side long --entry 309.80 --stop 293.64 \
@@ -15,6 +18,11 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass, field
+
+try:
+    from tools.fmt import num as fmt_num
+except ImportError:  # run as a script from tools/
+    from fmt import num as fmt_num
 
 TRANCHE_WEIGHTS = (0.30, 0.30, 0.40)  # first touch -> best price; largest piece at the best price
 DEFAULT_TARGET_WEIGHTS = {1: [1.0], 2: [0.5, 0.5], 3: [0.4, 0.4, 0.2]}
@@ -38,6 +46,8 @@ class Plan:
     atr: float | None = None                   # enables ATR-based buffer and max-leverage check
     funding_rate: float = 0.0                  # per 8h, as a fraction
     hold_hours: float = 0.0
+    contract_size: float | None = None         # underlying units per contract (MNQ 2, MES 5, MGC 10 oz)
+    contract_name: str | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -83,6 +93,8 @@ def validate(p: Plan) -> None:
             raise ValueError("weights must match targets and sum to 1")
     if (p.equity is None) != (p.risk_pct is None):
         raise ValueError("equity and risk_pct go together")
+    if p.contract_size is not None and p.contract_size <= 0:
+        raise ValueError("contract size must be > 0")
 
 
 def compute(p: Plan) -> dict:
@@ -149,6 +161,20 @@ def compute(p: Plan) -> dict:
         notes.append("FAIL: liquidation is reached before the stop")
     elif p.atr and buffer < p.atr:
         notes.append(f"FAIL: liquidation only {buffer / p.atr:.2f} ATR beyond stop (< 1 ATR)")
+    out["contracts"] = None
+    if p.contract_size:
+        name = p.contract_name or "contract"
+        exact = units / p.contract_size
+        whole = int(exact + 1e-9)
+        risk_one = p.contract_size * per_unit_with_fees
+        out["contracts"] = {"name": name, "size": p.contract_size, "exact": exact, "whole": whole,
+                            "risk_per_contract": risk_one, "sized": p.size is not None or p.equity is not None}
+        if out["contracts"]["sized"] and whole < 1:
+            notes.append(f"FAIL: the risk budget is smaller than 1 {name} (1 contract risks {risk_one:,.2f} "
+                         f"to the stop): tighten the stop, raise risk, or skip")
+        elif out["contracts"]["sized"] and whole < exact:
+            notes.append(f"sizing rounds down to {whole} {name} (exact {exact:.2f}); dollar figures above use the "
+                         f"exact size, so actual risk is {whole / exact:.0%} of it")
     if p.atr and risk_per_unit / p.atr > 3:
         notes.append(f"wide stop: {risk_per_unit / p.atr:.2f} ATR (> 3)")
     if rows[0]["R"] < 0.5:
@@ -159,7 +185,7 @@ def compute(p: Plan) -> dict:
 
 
 def render(res: dict) -> str:
-    f = lambda x, nd=2: "n/a" if x is None else f"{x:,.{nd}f}"
+    f = fmt_num
     lines = [f"Position: {res['asset']} {res['side']}, {f(res['leverage'], 1)}x isolated", "",
              "| Item | Value |", "|---|---|",
              f"| Entry (blended) | {f(res['entry'])} |"]
@@ -168,6 +194,13 @@ def render(res: dict) -> str:
     lines += [
         f"| Stop | {f(res['stop'])} (width {f(res['stop_width_atr'])} ATR) |",
         f"| Units / notional / margin | {f(res['units'], 4)} / {f(res['notional'])} / {f(res['margin'])} |",
+    ]
+    c = res.get("contracts")
+    if c:
+        lines.append(f"| Contracts ({c['name']}, {c['size']:g} units each) | "
+                     + (f"{c['whole']} (exact {c['exact']:.2f}); " if c["sized"] else "size [MISSING]; ")
+                     + f"risk per contract {f(c['risk_per_contract'])} |")
+    lines += [
         f"| Liquidation | {f(res['liquidation'])} ({f(res['liq_dist_pct'])}% from entry; buffer vs stop "
         f"{f(res['liq_buffer_vs_stop'])} = {f(res['liq_buffer_atr'])} ATR) |",
         f"| Max leverage (liq >= 1 ATR beyond stop) | {f(res['max_leverage_1atr'])} |",
@@ -201,13 +234,29 @@ def parse_args(argv: list[str]) -> tuple[Plan, bool]:
     ap.add_argument("--atr", type=float)
     ap.add_argument("--funding-rate", type=float, default=0.0)
     ap.add_argument("--hold-hours", type=float, default=0.0)
+    ap.add_argument("--contract-size", type=float,
+                    help="underlying units per contract; default from memory/universe.yaml for futures (MNQ 2, MES 5, MGC 10)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    spec = contract_spec(a.asset)
     plan = Plan(asset=a.asset, side=a.side, stop=a.stop, targets=a.targets, entry=a.entry,
                 zone=tuple(a.zone) if a.zone else None, weights=a.weights, leverage=a.leverage, mmr=a.mmr,
                 fee=a.fee, size=a.size, equity=a.equity, risk_pct=a.risk_pct, atr=a.atr,
-                funding_rate=a.funding_rate, hold_hours=a.hold_hours)
+                funding_rate=a.funding_rate, hold_hours=a.hold_hours,
+                contract_size=a.contract_size or (spec or {}).get("multiplier"),
+                contract_name=(spec or {}).get("name"))
     return plan, a.json
+
+
+def contract_spec(asset: str) -> dict | None:
+    """Futures contract spec for a watchlist id from memory/universe.yaml (None for spot, perps, ETFs)."""
+    try:
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from tools import universe
+        return universe.contract(asset.upper())
+    except Exception:
+        return None
 
 
 def main(argv: list[str]) -> int:

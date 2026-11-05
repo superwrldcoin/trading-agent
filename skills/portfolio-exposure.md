@@ -11,7 +11,7 @@ Show what all open positions add up to. Several leveraged positions can be one b
 ## Procedure
 1. Run `python tools/portfolio.py`. If there are no positions, say so and stop.
 2. **Per position:** price, unrealized P&L, notional (options as **delta-notional** = delta × contracts × multiplier × spot), margin, liquidation (isolated only; cross = `n/a`), and **risk to stop**, measured from the current price. Long options risk their current value. Short options and positions with no stop show "undefined".
-3. **By theme** (crypto: BTC, BCH; precious metals: XAU, SI, GLD; equities: MSFT): net notional (longs − shorts) and gross notional, as % of equity.
+3. **By theme** (crypto: BTC, BCH, ETH, SOL, XRP; precious metals: XAU, SI, SLV, GLD, MGC; equities: MSFT; equity index futures: MNQ, MES; energy: MCL): net notional (longs − shorts) and gross notional, as % of equity.
 4. **Correlation:** daily-return ρ over 30 and 90 days for each pair held. |ρ| ≥ 0.7 on either window → "treat as one bet". Size them as one position against the rules' limits.
 5. **Combined open risk:** the sum of risk to stops, as % of equity. Compare it with `max_open_risk_pct` in the rules (`rules-check`).
 6. **"What if everything moves 5%":** read the "all −5%" and "all +5%" rows from the stress table (`stress-test`).

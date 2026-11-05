@@ -76,7 +76,8 @@ def run(names: list[str] | None = None, for_id: str | None = None, fetch=data.fe
 
 
 def render(rows: list[dict]) -> str:
-    f = lambda x, nd=4: "n/a" if x is None else f"{x:,.{nd}f}"
+    # small ratios (XRP/BTC ~ 1.6e-05) need significant digits, not fixed decimals
+    f = lambda x: "n/a" if x is None else f"{x:,.4f}" if abs(x) >= 0.01 else f"{x:.4g}"
     lines = ["| Ratio | Formula | Value | vs SMA | 20d change | Trend | Reading |", "|---|---|---|---|---|---|---|"]
     for r in rows:
         if r.get("value") is None:
