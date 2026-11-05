@@ -93,9 +93,10 @@ try {
   await js(`localStorage.setItem("ta_notice", "1"), document.querySelector("#notice").hidden = true`);
 
   await expectView("lands on Home", "home", ["", "#home"]);   // a bare URL is Home
-  await until(`!!document.querySelector("#hPlayer .xp")`); await sleep(900); await shot("home");
-  check("home has hero, modes, player card, daily challenge",
-    await js(`!!document.querySelector("#hPlay") && document.querySelectorAll(".mode[data-mode]").length >= 3 && !!document.querySelector("#hPlayer .xp") && !!document.querySelector("#hDaily .quest")`));
+  // the player card waits on /api/paper, which re-marks open paper trades with live bars: allow for the network
+  const homeReady = `!!document.querySelector("#hPlay") && document.querySelectorAll(".mode[data-mode]").length >= 3 && !!document.querySelector("#hPlayer .xp") && !!document.querySelector("#hDaily .quest")`;
+  check("home has hero, modes, player card, daily challenge", await until(homeReady, 30000));
+  await sleep(900); await shot("home");
 
   check("daily challenge names a symbol and a live countdown", await until(
     `/^\\d\\d:\\d\\d:\\d\\d$/.test(document.querySelector("#qClock")?.textContent || "") && !!document.querySelector(".q-sym")?.textContent`));
@@ -144,6 +145,31 @@ try {
   check("ticket pre-filled (side, stop, targets, leverage)", await until(
     `document.querySelector("#tStop").value === "999999" && document.querySelector("#tTargets").value === "1000, 900" && document.querySelector("#tLev").value === "2" && document.querySelector(".side.short").classList.contains("active")`),
     JSON.stringify(await js(`({ stop: tStop.value, t: tTargets.value, lev: tLev.value })`)));
+
+  // house rules switch: off from the ticket, trade without a stop, survives a reload, back on from Home
+  await js(`window.confirm = () => true`);
+  await until(`document.querySelector("#tRules").textContent === "Rules on"`);
+  await js(`document.querySelector("#tRules").click()`);
+  check("rules switched off from the ticket", await until(
+    `tRules.textContent === "Rules off" && tStop.placeholder === "optional" && tLev.max === "125" && document.documentElement.dataset.rules === "off"`),
+    JSON.stringify(await js(`({ pill: tRules.textContent, ph: tStop.placeholder, max: tLev.max })`)));
+  await js(`tStop.value = ""; tTargets.value = ""; document.querySelector('#tSizeMode [data-v="size"]').click();`);
+  await js(`tSize.value = "0.001"; tLev.value = "60"; tSize.dispatchEvent(new Event("input")); tLev.dispatchEvent(new Event("input"))`);
+  check("no-stop ticket previews with the rules-off note", await until(`!!document.querySelector(".rules-off-note") && !tSubmit.disabled`, 15000),
+    await js(`tPreview.textContent.slice(0, 160)`));
+  const before = await js(`document.querySelectorAll("#pOpen .pos").length`);
+  await js(`tSubmit.click()`);
+  check("freestyle trade opens without a stop", await until(
+    `document.querySelectorAll("#pOpen .pos").length > ${before} && !!document.querySelector("#pOpen .free-tag")`, 15000));
+  await shot("paper-rules-off");
+  await send("Page.navigate", { url: `${BASE}/#paper` });
+  await until(`document.readyState === "complete" && !!window.Paper`);
+  check("rules-off survives a reload (stored in app.db)", await until(`tRules.textContent === "Rules off"`));
+  await js(`window.confirm = () => true; document.querySelector("#homeBtn").click()`); await expectView("to Home with rules off", "home");
+  check("Home shows rules off and the Freestyle track", await until(`!!document.querySelector("#hRules.off") && !!document.querySelector(".fs-track")`, 10000));
+  await sleep(500); await shot("home-rules-off");
+  await js(`document.querySelector("#hrToggle").click()`);
+  check("rules back on from the Home card", await until(`!document.querySelector("#hRules.off") && tRules.textContent === "Rules on"`));
 
   await js(`location.hash = "#analyze"`); await expectView("deep link #analyze", "analyze");
   await send("Page.navigate", { url: `${BASE}/#paper` });

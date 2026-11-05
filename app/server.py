@@ -65,6 +65,7 @@ def _clear_cache() -> int:
 
 HEADER = "X-Trading-Agent"
 MAX_BODY = 10_000
+MAX_IMPORT = 20_000_000      # a backup file being restored (Settings → Import)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -211,7 +212,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             return self._json(200, {"ok": True, "claude_cli": bool(agent.claude_path())})
         if path == "/api/config":
-            return self._json(200, self._config())
+            from tools import rules_check
+            return self._json(200, {**self._config(), "rules_enabled": rules_check.enabled()})   # the switch is live
+        if path == "/api/settings":
+            from tools import store
+            return self._json(200, {"settings": store.get_settings(), "store": {"path": str(store.path()),
+                                                                                 "exists": store.path().exists()}})
+        if path == "/api/export":
+            from tools import store
+            body = json.dumps(store.export(), indent=1).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Disposition", 'attachment; filename="trading-agent-export.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/history":
             return self._json(200, {"items": JOBS.history()})
         if path == "/api/paper":
@@ -241,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get(HEADER) != "1" or "application/json" not in self.headers.get("Content-Type", ""):
             return self._json(403, {"error": f"missing {HEADER} header or JSON body"})
         length = int(self.headers.get("Content-Length", 0) or 0)
-        if length > MAX_BODY:
+        if length > (MAX_IMPORT if self.path == "/api/import" else MAX_BODY):
             return self._json(413, {"error": "request too large"})
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
@@ -249,6 +267,23 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, AttributeError):
             return self._json(400, {"error": "invalid JSON"})
         parts = self.path.strip("/").split("/")
+        if self.path == "/api/settings":       # the user's settings and switches (e.g. rules_enabled), kept in app.db
+            from tools import store
+            vals = payload.get("settings") if isinstance(payload, dict) else None
+            if not isinstance(vals, dict) or len(vals) > 50:
+                return self._json(400, {"error": "settings must be an object"})
+            if "rules_enabled" in vals:
+                vals["rules_enabled"] = bool(vals["rules_enabled"])
+            try:
+                return self._json(200, {"settings": store.set_settings(vals)})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+        if self.path == "/api/import":
+            from tools import store
+            try:
+                return self._json(200, store.import_(payload.get("data")))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if self.path == "/api/history/clear":
             return self._json(200, {"deleted": JOBS.clear_history(), "cache": _clear_cache()})
         if len(parts) == 4 and parts[:2] == ["api", "history"] and parts[3] == "delete":

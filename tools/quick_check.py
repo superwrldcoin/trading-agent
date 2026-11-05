@@ -336,9 +336,10 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
             "notional": pos["notional"] if pos and req["equity"] else None,
             "liq_touch_5d": (out["vol"]["liq_touch"].get(5) or 0) * 100 if out.get("vol") else None,
             "option_premium": None}
+    out["rules_off"] = not rules_check.enabled()     # the user's switch: off = no rule checks or penalties
     try:
-        out["rules"] = rules_check.check(plan, rules_check.load_rules(), positions.load(),
-                                         rules_check.trade_history(), now)
+        out["rules"] = [] if out["rules_off"] else rules_check.check(
+            plan, rules_check.load_rules(), positions.load(), rules_check.trade_history(), now)
     except (ValueError, KeyError) as exc:
         out["rules"] = []
         flags.append(("warn", f"rules check failed: {exc}"))
@@ -458,7 +459,9 @@ def render(a: dict) -> str:
     order = {"fail": 0, "warn": 1, "info": 2}
     if a["flags"]:
         lines += ["", "Flags:"] + [f"- **{lvl.upper()}**: {msg}" for lvl, msg in sorted(a["flags"], key=lambda f: order[f[0]])]
-    if a.get("rules") is not None:
+    if a.get("rules_off"):
+        lines += ["", rules_check.RULES_OFF + "."]
+    elif a.get("rules") is not None:
         set_rules = [r for r in a["rules"] if r["result"] != "not set"]
         broken = [r for r in set_rules if r["result"] == "BREAKS"]
         if not set_rules:

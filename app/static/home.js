@@ -55,6 +55,7 @@ const Home = (() => {
       `<div class="xp-meta"><b>${pg.xp} XP</b><span>${pg.into} / ${pg.need} to level ${pg.level + 1}</span></div>` +
       `<div class="today"><span title="Only the first ${td.fill_cap} fills a day earn XP">Trades today <b>${td.fills}/${td.fill_cap}</b></span>` +
       `<span title="Paper P&amp;L XP is capped per day">P&amp;L XP <b>${td.pnl_xp}/${td.pnl_cap}</b></span><span>Today <b>${xpSign(td.xp)} XP</b></span></div>` +
+      (pg.freestyle && (pg.freestyle.trades || !rulesOn) ? freestyleRow(pg.freestyle) : "") +
       `<div class="badges">${pg.badges.map(b => `<span class="bdg ${b.earned ? "got" : ""}" title="${esc(b.name)}: ${esc(b.how)}${b.earned ? " ✓" : ""}">${esc(b.name)}</span>`).join("")}</div>` +
       (pg.recent.length ? `<ul class="xp-feed">${pg.recent.slice(0, 4).map(e => `<li><span>${esc(e.id)} · ${esc(e.label)}</span><b class="${e.xp >= 0 ? "up" : "down"}">${xpSign(e.xp)}</b></li>`).join("")}</ul>`
         : `<small class="muted">Earn XP with planned, rule-clean paper trades: a note, a P(T1) call and respecting your stop all count. Wins add XP too, capped per day.</small>`) +
@@ -68,6 +69,13 @@ const Home = (() => {
     $("#hDesk").onclick = () => go("paper");
   }
 
+  // second XP track for trades taken with house rules off (scored on results, capped per day)
+  function freestyleRow(fs){
+    return `<div class="fs-track ${rulesOn ? "" : "live"}" title="Freestyle XP: trades opened with house rules off. Results only (R won, T1 first, good P(T1) calls), capped at ${fs.today.cap} a day.">` +
+      `<span class="fs-lvl">FS ${fs.level}</span><div class="xp fs"><i style="--w:${fs.pct.toFixed(1)}%"></i></div>` +
+      `<span class="fs-meta"><b>${fs.xp} XP</b> · ${esc(fs.rank)} · today ${fs.today.gained}/${fs.today.cap}</span></div>`;
+  }
+
   // ---- daily challenge (computed in tools/paper.py: one symbol per UTC day, +40 XP once) ----
   let resetsAt = 0;
   function daily(ch){
@@ -78,6 +86,7 @@ const Home = (() => {
     box.innerHTML = `<div class="quest ${ch.done ? "done" : ""}">` +
       `<div class="q-main"><span class="q-kicker">★ Daily challenge · ${esc(ch.date)}${ch.weekend ? " · weekend: crypto only" : ""}</span>` +
       `<h3>Paper a rule-clean <b>${n(ch.min_R, ch.min_R % 1 ? 1 : 0)}R+</b> setup on <span class="q-sym">${esc(ch.symbol)}</span></h3>` +
+      (!rulesOn && !ch.done ? `<p class="q-off">House rules are off: the challenge needs a rule-checked ticket, so switch them on to play it.</p>` : "") +
       `<ul class="q-goals">${ch.goals.map(g => `<li class="${g.ok ? "ok" : ""}"><i>${g.ok ? "✓" : ""}</i>${esc(g.label)}</li>`).join("")}</ul>` +
       `<div class="q-cta">${ch.done ? `<span class="q-won">Complete${ch.t1 ? " · T1 hit" : ""} · ${esc(ch.trade_id)}</span>`
         : `<button class="play sm" id="qGo">Take the challenge →</button>`}` +
@@ -105,9 +114,20 @@ const Home = (() => {
       ["Min weighted R", r.min_weighted_r != null && `${r.min_weighted_r}R`],
       ["Trades per day", r.max_trades_per_day], ["Cooldown after a loss", r.loss_cooldown_hours != null && `${r.loss_cooldown_hours}h`],
       ["Stop", r.require_stop ? "required" : null], ["Max leverage", lev]].filter(([, v]) => v != null && v !== false);
-    box.innerHTML = `<h3>House rules <small>the game is played inside these</small></h3>` +
+    box.innerHTML = `<div class="hr-head"><h3>House rules <small id="hrSub"></small></h3>` +
+      `<button type="button" class="switch" id="hrToggle" role="switch" aria-label="House rules"><i></i></button></div>` +
       `<ul class="rule-list">${rows.map(([k, v]) => `<li><span>${esc(k)}</span><b>${esc(String(v))}</b></li>`).join("")}</ul>`;
+    $("#hrToggle").onclick = () => setRules(!rulesOn);
+    rulesState(rulesOn);
   }
+  // the card follows the app-wide switch (app.js): off = rules kept but not applied
+  function rulesState(on){
+    const sw = $("#hrToggle"); if (!sw) return;
+    sw.classList.toggle("on", on); sw.setAttribute("aria-checked", on);
+    $("#hRules").classList.toggle("off", !on);
+    $("#hrSub").textContent = on ? "the game is played inside these" : "off: freestyle, trade your own way";
+  }
+  document.addEventListener("rules", e => { rulesState(e.detail); if ($("main").dataset.view === "home") player(); });
 
   function setView(v){
     $("#homeView").hidden = v !== "home";

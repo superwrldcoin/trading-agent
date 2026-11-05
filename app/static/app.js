@@ -137,6 +137,7 @@ function saveSettings(){
   settings = { equity: $("#s_equity").value, risk: $("#s_risk").value, theme: $("#s_theme").value, action: $("#s_action").value,
     anim: $("#s_anim").checked, ladder: $("#s_ladder").checked, symbols: [...$("#s_symbols").selectedOptions].map(o => o.value) };
   localStorage.setItem("ta_settings", JSON.stringify(settings));
+  post("/api/settings", { settings: { ui: settings } }).catch(() => toast("Saved in this browser only: the server didn't answer"));
   $("#equity").value = settings.equity; $("#risk").value = settings.risk; applySettings(); closeDrawers(); toast("Settings saved");
   if (lastMarkdown && !$("#results").hidden) Report.render($("#out"), lastMarkdown, { onCopy: copyReport });
 }
@@ -192,4 +193,44 @@ document.addEventListener("pointermove", e => {   // soft spotlight that follows
   const p = e.target.closest && e.target.closest(".panel, .tile, .card");
   if (p){ const r = p.getBoundingClientRect(); p.style.setProperty("--mx", `${e.clientX - r.left}px`); p.style.setProperty("--my", `${e.clientY - r.top}px`); }
 }, { passive: true });
-applySettings(); loadConfig();
+
+// ---- settings live in memory/app.db (server), so they survive closing the app and clearing the browser ----
+async function loadServerSettings(){
+  let s; try { s = (await (await fetch("/api/settings")).json()).settings; } catch(e){ return; }
+  if (s.ui && typeof s.ui === "object"){
+    settings = Object.assign({}, DEFAULTS, s.ui); localStorage.setItem("ta_settings", JSON.stringify(settings)); applySettings();
+  } else if (localStorage.getItem("ta_settings")){
+    post("/api/settings", { settings: { ui: settings } }).catch(() => {});   // one-time move from the browser to the server
+  }
+  setRulesUI(s.rules_enabled !== false);
+}
+
+// ---- house rules switch: one app-wide setting; the desk, quick check and agent tools all read it ----
+let rulesOn = true;
+function setRulesUI(on){
+  rulesOn = on;
+  const sw = $("#rulesToggle"); sw.setAttribute("aria-checked", on); sw.classList.toggle("on", on);
+  $("#rulesState").textContent = on ? "On" : "Off";
+  $("#rulesHelp").textContent = on ? "Every plan and paper ticket is checked against your rules; breaks cost XP and some block the trade."
+    : "Off: trade your own way. No checks, prompts or penalties; stop and targets are optional. Risk and liquidation still show as info. Trades earn Freestyle XP.";
+  document.documentElement.dataset.rules = on ? "on" : "off";
+  document.dispatchEvent(new CustomEvent("rules", { detail: on }));
+}
+async function setRules(on){
+  if (!on && !confirm("Switch house rules off?\n\nNothing will be checked or blocked: no stop required, any leverage the margin allows, no XP penalties. Trades taken while off earn Freestyle XP instead of discipline XP.")) return false;
+  try {
+    const r = await post("/api/settings", { settings: { rules_enabled: on } });
+    if (r.error){ toast(r.error); return false; }
+    setRulesUI(r.settings.rules_enabled !== false); toast(`House rules ${on ? "on" : "off"}`); return true;
+  } catch(e){ toast("Couldn't reach the server"); return false; }
+}
+$("#rulesToggle").onclick = () => setRules(!rulesOn);
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  let data; try { data = JSON.parse(await f.text()); } catch(err){ toast("That file isn't valid JSON"); return; }
+  if (!confirm(`Restore "${f.name}"?\n\nYour current data is backed up first (memory/backups/), then replaced by this file.`)) return;
+  const r = await post("/api/import", { data });
+  if (r.error){ toast("Import failed: " + r.error); return; }
+  toast(`Restored ${r.docs.join(", ") || "settings"}; reloading`); setTimeout(() => location.reload(), 900);
+};
+applySettings(); loadConfig(); loadServerSettings();
