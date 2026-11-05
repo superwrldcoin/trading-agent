@@ -309,3 +309,23 @@ def test_quick_result_carries_a_paper_plan():
     assert agent.paper_plan(res) == {"symbol": "BTC/USDT", "side": "long", "entry": 100.0, "stop": 95.0,
                                      "targets": [105.0, 110.0], "leverage": 5.0}
     assert agent.paper_plan(dict(res, side=None)) is None
+
+
+def test_settings_rules_switch_export_import(srv):
+    from tools import store
+    status, body = request(srv, "GET", "/api/settings")
+    assert status == 200 and json.loads(body)["settings"]["rules_enabled"] is True
+    assert json.loads(request(srv, "GET", "/api/config")[1])["rules_enabled"] is True
+    assert request(srv, "POST", "/api/settings", {"settings": {"rules_enabled": False}}, {"Content-Type": "application/json"})[0] == 403
+    assert request(srv, "POST", "/api/settings", {"settings": "nope"}, OK)[0] == 400
+    status, body = request(srv, "POST", "/api/settings", {"settings": {"rules_enabled": 0, "ui": {"theme": "dark"}}}, OK)
+    assert status == 200 and json.loads(body)["settings"] == {"rules_enabled": False, "ui": {"theme": "dark"}}
+    assert json.loads(request(srv, "GET", "/api/config")[1])["rules_enabled"] is False      # not cached
+    store.put_doc("paper", {"next_id": 7})
+    status, body = request(srv, "GET", "/api/export")
+    dump = json.loads(body)
+    assert status == 200 and dump["docs"]["paper"] == {"next_id": 7} and dump["settings"]["rules_enabled"] is False
+    store.put_doc("paper", {"next_id": 99})
+    status, body = request(srv, "POST", "/api/import", {"data": dump}, OK)
+    assert status == 200 and json.loads(body)["docs"] == ["paper"] and store.get_doc("paper") == {"next_id": 7}
+    assert request(srv, "POST", "/api/import", {"data": {"format": "other"}}, OK)[0] == 400

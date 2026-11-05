@@ -9,7 +9,16 @@
   python tools/paper.py stats                          journal: win rate, expectancy, equity curve, P(T1) calibration
 
 Rules (AGENT.md): only the user opens paper trades (UI click or this CLI). The agent may pre-fill a ticket but never
-opens one. Store: memory/paper.json (private, gitignored).
+opens one. Store: the "paper" document in memory/app.db (tools/store.py; private, gitignored, survives restarts);
+memory/paper.json from earlier versions is imported on first use. TA_PAPER_PATH=<file.json> keeps a separate JSON file
+(tests and smoke runs).
+
+House rules switch (rules_check.enabled(), the user's choice in Settings):
+- on:  a stop and targets are required, every ticket is checked against the Trading rules, breaks cost XP, and the
+       liquidation-before-stop and contract-budget checks block the trade;
+- off: trade your own way. Stop and targets are optional (size by units or contracts without a stop), nothing is
+       checked or penalized, leverage is limited only by the margin math. Risk and liquidation are still shown as
+       information. Trades are tagged mode="free" and earn Freestyle XP from results instead of discipline XP.
 
 Fills and exits are simulated from 15M bars of the same feeds the analysis uses (tools/fetch_prices.py):
 - market orders fill at the last price; limit orders fill at the limit when a later bar trades through it;
@@ -38,7 +47,8 @@ sys.path.insert(0, str(ROOT))
 from tools import fetch_prices, levels, universe  # noqa: E402
 from tools import position_calc as pc  # noqa: E402
 
-PAPER_PATH = Path(os.environ.get("TA_PAPER_PATH") or ROOT / "memory" / "paper.json")   # env override for smoke tests
+# None = the app database (tools/store.py); TA_PAPER_PATH=<file.json> keeps a separate JSON file (tests, smoke runs)
+PAPER_PATH = Path(os.environ["TA_PAPER_PATH"]) if os.environ.get("TA_PAPER_PATH") else None
 DEFAULT_EQUITY = 10_000.0
 DEFAULT_FEE = 0.0005
 DEFAULT_MMR = 0.005
@@ -76,15 +86,26 @@ def new_account(equity: float = DEFAULT_EQUITY, now: pd.Timestamp | None = None)
     return {"start_equity": float(equity), "created": now.isoformat(), "fee": DEFAULT_FEE, "mmr": DEFAULT_MMR}
 
 
+def _empty() -> dict:
+    return {"account": new_account(), "trades": [], "next_id": 1, "archive": []}
+
+
 def load(path: Path | None = None) -> dict:
     p = path or PAPER_PATH
+    if p is None:
+        from tools import store
+        return store.get_doc("paper") or _empty()
     if not p.exists():
-        return {"account": new_account(), "trades": [], "next_id": 1, "archive": []}
+        return _empty()
     return json.loads(p.read_text(encoding="utf-8"))
 
 
 def save(state: dict, path: Path | None = None) -> None:
     p = path or PAPER_PATH
+    if p is None:
+        from tools import store
+        store.put_doc("paper", state)
+        return
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
@@ -108,8 +129,13 @@ def unrealized(t: dict, price: float) -> float:
     return _s(t["side"]) * (price - t["entry"]) * t["size"] * t["remaining"]
 
 
+def risk_level(t: dict) -> float:
+    """Where the trade is forced out: the stop, or the liquidation price when there's no stop (rules off)."""
+    return t["stop"] if t.get("stop") is not None else t["liquidation"]
+
+
 def initial_risk(t: dict) -> float:
-    return abs(t["entry"] - t["stop"]) * t["size"]
+    return abs(t["entry"] - risk_level(t)) * t["size"]
 
 
 def _exit(t: dict, frac: float, price: float, ts: str, reason: str) -> None:
@@ -161,7 +187,8 @@ def step(t: dict, bars: pd.DataFrame) -> None:
         best = b["high"] if s > 0 else b["low"]
         t["mae"] = min(t["mae"], s * (worst - t["entry"]))
         t["mfe"] = max(t["mfe"], s * (best - t["entry"]))
-        guard, reason = ((t["stop"], "stop") if s * (t["stop"] - t["liquidation"]) >= 0
+        stop = t.get("stop")
+        guard, reason = ((stop, "stop") if stop is not None and s * (stop - t["liquidation"]) >= 0
                          else (t["liquidation"], "liquidation"))
         if s * (worst - guard) <= 0:
             if t.get("t1_before_stop") is None:
@@ -218,12 +245,15 @@ def plan_ticket(state: dict, req: dict, price: float) -> dict:
         raise PaperError(f"unknown symbol {sym!r}")
     if side not in ("long", "short"):
         raise PaperError("side must be long or short")
+    from tools import rules_check
+    free = not rules_check.enabled()          # house rules switched off: the user's strategy, no checks
     stop = req.get("stop")
-    if stop is None:
-        raise PaperError("a stop is required for paper trades (your rules require one)")
+    stop = float(stop) if stop not in (None, "") else None
     targets = sorted([float(x) for x in req.get("targets") or []], key=lambda x: _s(side) * x)
-    if not targets:
-        raise PaperError("give at least one target")
+    if stop is None and not free:
+        raise PaperError("a stop is required while house rules are on (switch them off to trade without one)")
+    if not targets and not free:
+        raise PaperError("give at least one target (or switch house rules off to manage the exit yourself)")
     limit = req.get("limit")
     entry = float(limit) if limit is not None else price
     if limit is not None and _s(side) * (entry - price) > 0:
@@ -240,44 +270,74 @@ def plan_ticket(state: dict, req: dict, price: float) -> dict:
         if n < 1 or n != int(n):
             raise PaperError("contracts must be a whole number >= 1")
         size = n * spec["multiplier"]
+    lev = float(req.get("leverage") or 1)
+    if lev < 1:
+        raise PaperError("leverage must be at least 1x")
     try:
-        res = pc.compute(pc.Plan(asset=sym, side=side, entry=entry, stop=float(stop), targets=targets,
-                                 leverage=float(req.get("leverage") or 1), mmr=acct["mmr"], fee=acct["fee"],
-                                 size=float(size) if size else None,
-                                 equity=eq if not size else None, risk_pct=float(risk_pct or 1) if not size else None,
-                                 contract_size=spec.get("multiplier"), contract_name=spec.get("name")))
+        liq = pc.liquidation_price(side, entry, lev, acct["mmr"])     # the one hard limit: the margin math
     except ValueError as exc:
         raise PaperError(str(exc)) from exc
-    units = res["units"]
-    c = res.get("contracts")
-    if c and c["sized"] and not size:
-        if c["whole"] < 1:
-            raise PaperError(f"risk budget too small for 1 {c['name']} (1 contract risks "
-                             f"{c['risk_per_contract']:,.2f} to the stop)")
-        units = c["whole"] * c["size"]
-    if res["liquidates_before_stop"]:
-        raise PaperError(f"liquidation {res['liquidation']:,.4f} is hit before the stop at "
-                         f"{float(req.get('leverage') or 1):g}x: lower the leverage")
-    weights = res["targets"]
+    notes: list[str] = []
+    if stop is not None and targets:
+        try:
+            res = pc.compute(pc.Plan(asset=sym, side=side, entry=entry, stop=stop, targets=targets, leverage=lev,
+                                     mmr=acct["mmr"], fee=acct["fee"], size=float(size) if size else None,
+                                     equity=eq if not size else None,
+                                     risk_pct=float(risk_pct or 1) if not size else None,
+                                     contract_size=spec.get("multiplier"), contract_name=spec.get("name")))
+        except ValueError as exc:
+            raise PaperError(str(exc)) from exc
+        units, c, weighted_r = res["units"], res.get("contracts"), res["weighted_R"]
+        if c and c["sized"] and not size:
+            if c["whole"] < 1:
+                raise PaperError(f"risk budget too small for 1 {c['name']} (1 contract risks "
+                                 f"{c['risk_per_contract']:,.2f} to the stop): raise risk %, or size by contracts")
+            units = c["whole"] * c["size"]
+        if res["liquidates_before_stop"]:
+            if not free:
+                raise PaperError(f"liquidation {liq:,.4f} is hit before the stop at {lev:g}x: lower the leverage")
+            notes.append(f"liquidation {liq:,.4f} comes before your stop: liquidation is the effective exit")
+        tgt_rows = [{"price": w["target"], "weight": w["weight"], "R": w["R"]} for w in res["targets"]]
+        notes += [n for n in res["notes"] if "per 1 unit" not in n and not n.startswith("FAIL: liquidation")]
+    else:
+        # rules off and no stop and/or no targets: size must be explicit (units or contracts)
+        if not size:
+            raise PaperError("without a stop (or targets) there's nothing to size risk % against: "
+                             "size by units" + (" or contracts" if spec else ""))
+        units = float(size)
+        if stop is not None and _s(side) * (entry - stop) <= 0:
+            raise PaperError(f"stop {stop} is on the wrong side of entry {entry:,.4f} for a {side}")
+        bad = [x for x in targets if _s(side) * (x - entry) <= 0]
+        if bad:
+            raise PaperError(f"targets {bad} are not in profit for a {side} from {entry:,.4f}")
+        c = {"name": spec["name"], "size": spec["multiplier"]} if spec else None
+        w = pc.DEFAULT_TARGET_WEIGHTS.get(len(targets), [1 / len(targets)] * len(targets)) if targets else []
+        ref = stop if stop is not None else liq
+        tgt_rows = [{"price": x, "weight": wt, "R": _s(side) * (x - entry) / abs(entry - ref) if entry != ref else None}
+                    for x, wt in zip(targets, w)]
+        weighted_r = sum(r["weight"] * r["R"] for r in tgt_rows) if tgt_rows and stop is not None else None
+        if stop is None:
+            notes.append("no stop: the position runs until you close it, a target fills, or liquidation")
+        if not targets:
+            notes.append("no targets: you close it yourself")
     trade = {"symbol": sym, "side": side, "order": "limit" if limit is not None else "market",
              "limit": entry if limit is not None else None, "entry": entry, "size": units,
              "contracts": (units / c["size"]) if c else None, "contract_name": c["name"] if c else None,
-             "leverage": float(req.get("leverage") or 1), "mmr": acct["mmr"], "fee": acct["fee"],
-             "stop": float(stop), "targets": [{"price": w["target"], "weight": w["weight"], "hit_at": None}
-                                              for w in weights],
-             "liquidation": pc.liquidation_price(side, entry, float(req.get("leverage") or 1), acct["mmr"]),
+             "leverage": lev, "mmr": acct["mmr"], "fee": acct["fee"], "stop": stop,
+             "targets": [{"price": r["price"], "weight": r["weight"], "hit_at": None} for r in tgt_rows],
+             "liquidation": liq, "mode": "free" if free else "rules",
              "p_t1": float(req["p_t1"]) if req.get("p_t1") not in (None, "") else None,
              "note": str(req.get("note") or "")[:280], "source": str(req.get("source") or "ticket")[:40]}
-    risk_amt = (abs(entry - float(stop)) + (entry + float(stop)) * acct["fee"]) * units   # loss at the stop incl. fees
-    preview = {"entry": entry, "units": units, "notional": units * entry, "margin": units * entry / trade["leverage"],
-               "risk": risk_amt, "risk_pct": risk_amt / eq * 100 if eq else None, "liquidation": trade["liquidation"],
-               "weighted_R": res["weighted_R"], "targets": [{"price": w["target"], "weight": w["weight"],
-                                                             "R": w["R"]} for w in weights],
+    ref = risk_level(trade)
+    risk_amt = (abs(entry - ref) + (entry + ref) * acct["fee"]) * units   # loss at the stop (or liquidation) incl. fees
+    preview = {"entry": entry, "units": units, "notional": units * entry, "margin": units * entry / lev,
+               "risk": risk_amt, "risk_pct": risk_amt / eq * 100 if eq else None, "risk_to": "stop" if stop is not None else "liquidation",
+               "liquidation": liq, "weighted_R": weighted_r, "targets": tgt_rows,
                "contracts": trade["contracts"], "contract_name": trade["contract_name"], "equity": eq,
-               "notes": [n for n in res["notes"] if "per 1 unit" not in n]}
-    preview["rules"] = rules_for(state, trade, preview)
-    # recorded on the trade so XP can tell rule-clean trades from rule breaks later
-    trade["weighted_R"] = res["weighted_R"]          # kept for the daily challenge (needs the planned R at open)
+               "notes": notes, "rules_off": free}
+    preview["rules"] = [] if free else rules_for(state, trade, preview)
+    # recorded on the trade so XP can tell rule-clean trades from rule breaks (and free trades) later
+    trade["weighted_R"] = weighted_r                 # kept for the daily challenge (needs the planned R at open)
     trade["rules_checked"] = bool(preview["rules"])
     trade["rule_breaks"] = [r["rule"] for r in preview["rules"] if r["result"] == "BREAKS"]
     preview["xp"] = xp_preview(state, trade)
@@ -499,7 +559,8 @@ def challenge(state: dict, now: pd.Timestamp | None = None) -> dict:
     now = now or pd.Timestamp.now(tz="UTC")
     day, min_r = now.strftime("%Y-%m-%d"), _min_r()
     sym = challenge_symbol(day)
-    tries = [t for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == day and t.get("symbol") == sym]
+    tries = [t for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == day
+             and t.get("symbol") == sym and t.get("mode") != "free"]       # freestyle trades can't qualify
     ev = [e for e in challenge_events(tries, min_r) if e["day"] == day]
     best = max(tries, key=lambda t: sum(ok for _, ok in _qualifies(t, min_r)), default=None)
     goals = _qualifies(best, min_r) if best else _qualifies({}, min_r)
@@ -559,8 +620,12 @@ def _day(ts: str) -> str:
 
 def xp_preview(state: dict, trade: dict, now: pd.Timestamp | None = None) -> dict:
     """What opening this ticket would earn right now (shown on the ticket before the user opens it)."""
+    if trade.get("mode") == "free":
+        return {"total": 0, "parts": [], "capped": False, "free": True,
+                "note": "House rules are off: this trade earns Freestyle XP from its result (R won, T1 first, a good P(T1) call)"}
     today = (now or pd.Timestamp.now(tz="UTC")).strftime("%Y-%m-%d")
-    fills_today = sum(1 for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == today)
+    fills_today = sum(1 for t in _all_trades(state) if t.get("opened_at") and t.get("mode") != "free"
+                      and _day(t["opened_at"]) == today)
     counted = fills_today < _daily_cap()
     parts = _open_parts(trade, counted)
     return {"total": sum(x for _, x in parts), "parts": [{"label": l, "xp": x} for l, x in parts],
@@ -570,7 +635,8 @@ def xp_preview(state: dict, trade: dict, now: pd.Timestamp | None = None) -> dic
 def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
     now = now or pd.Timestamp.now(tz="UTC")
     cap = _daily_cap()
-    trades = sorted([t for t in _all_trades(state) if t.get("opened_at")], key=lambda t: t["opened_at"])
+    every = sorted([t for t in _all_trades(state) if t.get("opened_at")], key=lambda t: t["opened_at"])
+    trades = [t for t in every if t.get("mode") != "free"]     # discipline XP: trades taken with house rules on
     events, fills_per_day, pnl_per_day = [], {}, {}
     for t in trades:
         d = _day(t["opened_at"])
@@ -620,7 +686,7 @@ def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
         best_clean = max(best_clean, clean_run)
     calls = [t for t in closed if t.get("p_t1") is not None and t.get("t1_before_stop") is not None]
     cal_ok = len(calls) >= 20 and all(abs(c["called"] - c["actual"]) <= 10 for c in calibration(calls) if c["n"] >= 5)
-    earned = {"first_fill": bool(trades), "first_t1": any(t.get("t1_before_stop") for t in closed),
+    earned = {"first_fill": bool(every), "first_t1": any(t.get("t1_before_stop") for t in every if t["status"] == "closed"),
               "clean_10": best_clean >= 10, "journal_10": sum(1 for t in trades if len((t.get("note") or "").strip()) >= NOTE_MIN) >= 10,
               "streak_5": best >= 5, "calibrated": cal_ok,
               "challenge_5": sum(1 for e in ch_events if e["label"] == "Daily challenge") >= 5}
@@ -630,7 +696,47 @@ def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
                       "pnl_xp": pnl_per_day.get(today, 0), "pnl_cap": PNL_XP_CAP,
                       "xp": sum(e["xp"] for e in events if _day(e["ts"]) == today)},
             "badges": [{"id": k, "name": n, "how": h, "earned": earned[k]} for k, n, h in BADGES],
-            "recent": events[-8:][::-1]}
+            "recent": events[-8:][::-1], "freestyle": freestyle([t for t in every if t.get("mode") == "free"], now)}
+
+
+# Freestyle XP: trades opened with house rules off. No discipline checks, so it scores results only, and the
+# positive XP per UTC day is capped so spamming trades doesn't farm it. Liquidations still cost a little.
+FREE_XP = {"per_R": 10, "t1": 10, "good_call": 5, "liquidation": -10}
+FREE_DAILY_CAP = 60
+
+
+def freestyle(trades: list[dict], now: pd.Timestamp) -> dict:
+    events, gained = [], {}
+    for t in sorted([t for t in trades if t["status"] == "closed"], key=lambda t: t["closed_at"]):
+        ts, d = t["closed_at"], _day(t["closed_at"])
+        parts = []
+        if (t.get("R") or 0) > 0:
+            parts.append((f"Won {t['R']:+.2f}R", int(round(t["R"] * FREE_XP["per_R"]))))
+        if t.get("t1_before_stop"):
+            parts.append(("T1 first", FREE_XP["t1"]))
+        if t.get("p_t1") is not None and t.get("t1_before_stop") is not None \
+                and (t["p_t1"] >= 50) == bool(t["t1_before_stop"]) and t["p_t1"] != 50:
+            parts.append(("Good P(T1) call", FREE_XP["good_call"]))
+        if t.get("exit_reason") == "liquidation":
+            parts.append(("Liquidated", FREE_XP["liquidation"]))
+        for label, xp in parts:
+            if xp > 0:
+                xp = min(xp, FREE_DAILY_CAP - gained.get(d, 0))
+                if xp <= 0:
+                    continue
+                gained[d] = gained.get(d, 0) + xp
+            events.append({"ts": ts, "id": t["id"], "label": label, "xp": xp})
+    total = max(0, sum(e["xp"] for e in events))
+    today = now.strftime("%Y-%m-%d")
+    return {"xp": total, **level_for(total), "trades": len(trades),
+            "today": {"xp": sum(e["xp"] for e in events if _day(e["ts"]) == today), "gained": gained.get(today, 0),
+                      "cap": FREE_DAILY_CAP},
+            "recent": events[-6:][::-1]}
+
+
+def _rules_on() -> bool:
+    from tools import rules_check
+    return rules_check.enabled()
 
 
 def snapshot(state: dict, marks: dict, errors: dict | None = None) -> dict:
@@ -646,14 +752,15 @@ def snapshot(state: dict, marks: dict, errors: dict | None = None) -> dict:
             risk = initial_risk(t)
             r["open_R"] = (t["realized"] + r["unrealized"]) / risk if risk else None
             unreal += r["unrealized"]
-            open_risk += max(0.0, _s(t["side"]) * (t["entry"] - t["stop"])) * t["size"] * t["remaining"]
+            open_risk += max(0.0, _s(t["side"]) * (t["entry"] - risk_level(t))) * t["size"] * t["remaining"]
         rows.append(r)
     bal = balance(state)
     return {"account": {**state["account"], "balance": bal, "unrealized": unreal, "equity": bal + unreal,
                         "open_risk": open_risk, "open_risk_pct": open_risk / bal * 100 if bal else None,
                         "return_pct": (bal + unreal) / state["account"]["start_equity"] * 100 - 100},
             "trades": rows[::-1], "marks": marks, "errors": errors or {}, "stats": stats(state),
-            "progress": progress(state), "challenge": challenge(state), "broker": PaperBroker.name}
+            "progress": progress(state), "challenge": challenge(state), "broker": PaperBroker.name,
+            "rules_enabled": _rules_on()}
 
 
 # ---------- API used by the web server and the CLI ----------
@@ -729,8 +836,8 @@ def main(argv: list[str]) -> int:
     o = sub.add_parser("open")
     o.add_argument("--symbol", required=True)
     o.add_argument("--side", required=True, choices=["long", "short"])
-    o.add_argument("--stop", type=float, required=True)
-    o.add_argument("--targets", type=float, nargs="+", required=True)
+    o.add_argument("--stop", type=float, help="required while house rules are on")
+    o.add_argument("--targets", type=float, nargs="+", default=[], help="required while house rules are on")
     o.add_argument("--risk-pct", type=float)
     o.add_argument("--size", type=float)
     o.add_argument("--leverage", type=float, default=1.0)

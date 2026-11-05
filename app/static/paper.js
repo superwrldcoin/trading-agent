@@ -77,9 +77,22 @@ const Paper = (() => {
     lastPx = null; $("#tPx").textContent = "—"; $("#tChg").textContent = ""; levLabel(); quote(); previewSoon(); banner();
   }
   function levLabel(){
-    const v = Number($("#tLev").value), cap = levCap(), out = $("#tLevOut");
-    out.textContent = `${v}x` + (cap ? ` · your cap ${cap}x` : ""); out.classList.toggle("over", !!cap && v > cap);
+    const v = Number($("#tLev").value), cap = rulesOn ? levCap() : null, out = $("#tLevOut");
+    out.textContent = `${v}x` + (cap ? ` · your cap ${cap}x` : rulesOn ? "" : " · rules off"); out.classList.toggle("over", !!cap && v > cap);
   }
+  // house rules switch (app.js owns it): off = optional stop/targets, leverage up to the margin math, no checks
+  const LEV_MAX = { on: 50, off: 125 };
+  function onRules(on){
+    const pill = $("#tRules"); pill.textContent = on ? "Rules on" : "Rules off"; pill.className = "rules-pill " + (on ? "on" : "off");
+    pill.title = on ? "House rules are on: click to trade without them" : "House rules are off: click to switch them back on";
+    $("#tStop").placeholder = on ? "required (rules on)" : "optional";
+    $("#tTargets").placeholder = on ? "T1, T2, T3" : "optional: T1, T2, T3";
+    const lev = $("#tLev"); lev.max = on ? LEV_MAX.on : LEV_MAX.off;
+    if (Number(lev.value) > Number(lev.max)) lev.value = lev.max;
+    levLabel(); previewSoon(); banner();
+  }
+  document.addEventListener("rules", e => onRules(e.detail));
+  $("#tRules").onclick = () => setRules(!rulesOn);
   function ticket(){
     const t = { symbol: $("#tSym").value, side, stop: num($("#tStop").value),
       targets: $("#tTargets").value.split(/[,\s/]+/).map(num).filter(x => x != null && isFinite(x)),
@@ -92,7 +105,12 @@ const Paper = (() => {
   function previewSoon(){ clearTimeout(previewTimer); previewTimer = setTimeout(preview, 350); }
   async function preview(){
     const t = ticket(), box = $("#tPreview");
-    if (t.stop == null || !t.targets.length){ lastPreview = null; box.innerHTML = `<p class="muted">Add a stop and at least one target to size the trade.</p>`; $("#tSubmit").disabled = true; return; }
+    const planned = t.stop != null && t.targets.length, sized = sizeMode !== "risk" && t.size != null || t.contracts != null;
+    if (rulesOn ? !planned : !(planned || sized)){
+      lastPreview = null; $("#tSubmit").disabled = true;
+      box.innerHTML = `<p class="muted">${rulesOn ? "Add a stop and at least one target to size the trade."
+        : "Rules are off: add a stop and targets, or size by units/contracts and go without them."}</p>`; return;
+    }
     let j; try { j = await post("/api/paper/preview", t); } catch(e){ box.innerHTML = `<p class="err">Preview failed: ${esc(e)}</p>`; return; }
     if (j.error){ lastPreview = null; box.innerHTML = `<p class="err">${esc(j.error)}</p>`; $("#tSubmit").disabled = true; return; }
     lastPreview = j.preview; $("#tSubmit").disabled = false;
@@ -100,14 +118,16 @@ const Paper = (() => {
     box.innerHTML =
       `<div class="pv-grid">` +
       `<div><small>Size</small><b>${p.contracts != null ? `${n(p.contracts, 0)} ${esc(p.contract_name)}` : n(p.units, 4)}</b></div>` +
-      `<div><small>Risk to stop</small><b class="down">${usd(p.risk)}</b><em>${pct(p.risk_pct, false)} of equity</em></div>` +
+      `<div><small>Risk to ${p.risk_to === "liquidation" ? "liquidation" : "stop"}</small><b class="down">${usd(p.risk)}</b><em>${pct(p.risk_pct, false)} of equity</em></div>` +
       `<div><small>Notional / margin</small><b>${usd(p.notional)}</b><em>${usd(p.margin)}</em></div>` +
       `<div><small>Liquidation</small><b>${n(p.liquidation)}</b></div>` +
-      `<div><small>Weighted R</small><b class="${p.weighted_R >= 2 ? "up" : "warn"}">${n(p.weighted_R, 2)}</b></div>` +
-      `</div>` + ladder(t, p) +
-      (p.rules.length ? `<ul class="rules">${p.rules.map(r => `<li class="${r.result === "BREAKS" ? "brk" : "ok"}">${r.result === "BREAKS" ? "✕" : "✓"} ${esc(r.rule)} <small>${esc(r.value)} vs ${esc(r.limit)}</small></li>`).join("")}</ul>` : "") +
+      `<div><small>Weighted R</small><b class="${p.weighted_R == null ? "" : p.weighted_R >= 2 ? "up" : "warn"}">${p.weighted_R == null ? "—" : n(p.weighted_R, 2)}</b></div>` +
+      `</div>` + (t.stop != null && p.targets.length ? ladder(t, p) : "") +
+      (p.rules_off ? `<p class="rules-off-note">House rules are off: nothing checked or blocked. The numbers above are information.</p>`
+        : p.rules.length ? `<ul class="rules">${p.rules.map(r => `<li class="${r.result === "BREAKS" ? "brk" : "ok"}">${r.result === "BREAKS" ? "✕" : "✓"} ${esc(r.rule)} <small>${esc(r.value)} vs ${esc(r.limit)}</small></li>`).join("")}</ul>` : "") +
       (p.notes.length ? `<p class="muted small">${p.notes.map(esc).join(" · ")}</p>` : "") +
-      (p.xp ? `<div class="xp-preview ${p.xp.total >= 0 ? "xp-up" : "xp-down"}"><b>${p.xp.total >= 0 ? "+" : ""}${p.xp.total} XP</b> if you open it` +
+      (p.xp && p.xp.free ? `<div class="xp-preview xp-free"><b>Freestyle XP</b><small>${esc(p.xp.note)}</small></div>`
+        : p.xp ? `<div class="xp-preview ${p.xp.total >= 0 ? "xp-up" : "xp-down"}"><b>${p.xp.total >= 0 ? "+" : ""}${p.xp.total} XP</b> if you open it` +
         `<small>${p.xp.parts.map(x => `${esc(x.label)} ${x.xp > 0 ? "+" : ""}${x.xp}`).join(" · ")}${p.xp.note ? ` · ${esc(p.xp.note)}` : ""}</small></div>` : "");
     $("#tSubmit").classList.toggle("warn", breaks.length > 0);
   }
@@ -126,7 +146,7 @@ const Paper = (() => {
   }
   async function submit(){
     if (!lastPreview) return;
-    const breaks = lastPreview.rules.filter(r => r.result === "BREAKS");
+    const breaks = lastPreview.rules_off ? [] : lastPreview.rules.filter(r => r.result === "BREAKS");
     if (breaks.length && !confirm(`This paper trade breaks ${breaks.length} of your rules:\n\n` +
       breaks.map(r => `• ${r.rule}: ${r.value} vs ${r.limit}`).join("\n") + "\n\nOpen it anyway (it's practice, but the journal will show it)?")) return;
     const btn = $("#tSubmit"); btn.disabled = true;
@@ -174,13 +194,17 @@ const Paper = (() => {
     if (b.hidden) return;
     b.className = "ch-banner" + (ch.done ? " done" : "");
     b.innerHTML = ch.done ? `🏆 Today's challenge is done (${esc(ch.trade_id)}). ${ch.t1 ? "T1 hit too." : `+${ch.reward.t1} XP more if it reaches T1 first.`}`
+      : !rulesOn ? `★ Today's challenge symbol. The challenge needs a rule-checked ticket: switch house rules on to play it.`
       : `★ Daily challenge symbol: a rule-clean ticket with a P(T1) call and ${ch.min_R}R+ earns <b>+${ch.reward.done} XP</b>.`;
   }
   // ---- XP: chip on the desk, "+N XP" pop and level-up toast when the journal earns something new ----
   function noteProgress(pg){
     if (!pg) return;
     const chip = $("#pXp"); chip.hidden = false;
-    chip.innerHTML = `<b>Lv ${pg.level}</b><i style="--w:${pg.pct.toFixed(1)}%"></i><span>${pg.xp} XP</span>${pg.streak ? `<em>🔥${pg.streak}</em>` : ""}`;
+    const fs = pg.freestyle;
+    chip.innerHTML = rulesOn || !fs
+      ? `<b>Lv ${pg.level}</b><i style="--w:${pg.pct.toFixed(1)}%"></i><span>${pg.xp} XP</span>${pg.streak ? `<em>🔥${pg.streak}</em>` : ""}`
+      : `<b>FS ${fs.level}</b><i class="fs" style="--w:${fs.pct.toFixed(1)}%"></i><span>${fs.xp} Freestyle XP</span>`;
     let seen = null; try { seen = JSON.parse(localStorage.getItem("ta_xp_seen") || "null"); } catch(e){}
     localStorage.setItem("ta_xp_seen", JSON.stringify({ xp: pg.xp, level: pg.level }));
     if (!seen || seen.xp === pg.xp) return;               // first visit: nothing to celebrate
@@ -224,7 +248,8 @@ const Paper = (() => {
     box.innerHTML = live.map((t, k) => {
       const s1 = t.side === "long" ? 1 : -1, px = t.mark ?? t.entry, prev = marks[t.id];
       const flash = prev != null && prev !== px ? (px > prev ? "flash-up" : "flash-down") : ""; marks[t.id] = px;
-      const tg = t.targets.map(x => x.price), lo = Math.min(t.stop, ...tg, px), hi = Math.max(t.stop, ...tg, px), span = hi - lo || 1;
+      const out = t.stop ?? t.liquidation;   // where the trade is forced out (no stop when rules are off)
+      const tg = t.targets.map(x => x.price), lo = Math.min(out, t.entry, ...tg, px), hi = Math.max(out, t.entry, ...tg, px), span = hi - lo || 1;
       const pos = v => ((s1 > 0 ? v - lo : hi - v) / span * 100).toFixed(2);
       const size = t.contracts != null ? `${n(t.contracts, 0)} ${esc(t.contract_name)}` : n(t.size * t.remaining, 4);
       return `<article class="pos ${t.side} ${t.status}" style="--i:${k}">` +
@@ -234,11 +259,12 @@ const Paper = (() => {
         `<div><small>Mark</small><b class="${flash}">${n(t.mark)}</b></div>` +
         (t.status === "open" ? `<div><small>Net P&amp;L</small><b class="${tone(t.unrealized + t.realized)}">${usd(t.unrealized + t.realized, true)}</b></div>` +
           `<div><small>R</small><b class="${tone(t.open_R)}">${rr(t.open_R)}</b></div>` : "") + `</div>` +
-        `<div class="track" title="stop ${n(t.stop)} · liq ${n(t.liquidation)}"><i class="risk" style="left:${Math.min(pos(t.stop), pos(t.entry))}%;width:${Math.abs(pos(t.entry) - pos(t.stop))}%"></i>` +
-        `<span class="tk stop" style="left:${pos(t.stop)}%"></span>` +
+        `<div class="track" title="${t.stop != null ? "stop " + n(t.stop) : "no stop"} · liq ${n(t.liquidation)}"><i class="risk" style="left:${Math.min(pos(out), pos(t.entry))}%;width:${Math.abs(pos(t.entry) - pos(out))}%"></i>` +
+        `<span class="tk ${t.stop != null ? "stop" : "liq"}" style="left:${pos(out)}%"></span>` +
         t.targets.map(x => `<span class="tk tgt ${x.hit_at ? "hit" : ""}" style="left:${pos(x.price)}%" title="${n(x.price)}${x.hit_at ? " (hit)" : ""}"></span>`).join("") +
         `<span class="tk entry" style="left:${pos(t.entry)}%"></span><span class="dot ${tone(s1 * (px - t.entry))}" style="left:${pos(px)}%"></span></div>` +
-        `<footer><small>stop ${n(t.stop)} · targets ${t.targets.map(x => (x.hit_at ? "✓" : "") + n(x.price)).join(" / ")} · liq ${n(t.liquidation)}${t.p_t1 != null ? ` · P(T1) ${n(t.p_t1, 0)}%` : ""}</small>` +
+        `<footer><small>${t.mode === "free" ? `<span class="free-tag">freestyle</span> ` : ""}${t.stop != null ? "stop " + n(t.stop) : "no stop"} · ` +
+        `${t.targets.length ? "targets " + t.targets.map(x => (x.hit_at ? "✓" : "") + n(x.price)).join(" / ") : "no targets"} · liq ${n(t.liquidation)}${t.p_t1 != null ? ` · P(T1) ${n(t.p_t1, 0)}%` : ""}</small>` +
         `<button class="ghost sm" data-act="${t.status === "pending" ? "cancel" : "close"}" data-id="${esc(t.id)}">${t.status === "pending" ? "Cancel" : "Close at market"}</button></footer></article>`;
     }).join("");
   }

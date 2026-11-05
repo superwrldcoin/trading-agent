@@ -135,7 +135,7 @@
 
     <div class="paper-grid">
       <section class="panel ticket" id="ticket">
-        <div class="t-head"><h3>Ticket</h3><select id="tSym" aria-label="Symbol"></select></div>
+        <div class="t-head"><h3>Ticket</h3><button type="button" class="rules-pill on" id="tRules" title="House rules: click to switch">Rules on</button><select id="tSym" aria-label="Symbol"></select></div>
         <div class="ch-banner" id="tChallenge" hidden></div>
         <div class="quote" id="tQuote"><b id="tPx">—</b><small id="tChg"></small><small class="src" id="tSrc"></small></div>
         <div class="side-toggle" role="radiogroup" aria-label="Side">
@@ -145,7 +145,7 @@
         <div class="seg sm" id="tOrd"><button type="button" class="seg-btn active" data-v="market">Market</button><button type="button" class="seg-btn" data-v="limit">Limit</button></div>
         <div class="t-fields">
           <label id="tLimitWrap" hidden>Limit <input id="tLimit" inputmode="decimal"></label>
-          <label>Stop <input id="tStop" inputmode="decimal" placeholder="required"></label>
+          <label>Stop <input id="tStop" inputmode="decimal" placeholder="required (rules on)"></label>
           <label>Targets <input id="tTargets" placeholder="T1, T2, T3"></label>
           <div class="seg sm" id="tSizeMode"><button type="button" class="seg-btn active" data-v="risk">Risk %</button><button type="button" class="seg-btn" data-v="size">Units</button><button type="button" class="seg-btn" data-v="contracts" hidden>Contracts</button></div>
           <label><span id="tSizeLbl">Risk %</span> <input id="tSize" inputmode="decimal" value="1"></label>
@@ -191,8 +191,18 @@
   <label class="stack">Symbol shortcuts <select id="s_symbols" multiple size="6"></select></label>
   <label class="check"><input type="checkbox" id="s_anim"> Animations</label>
   <label class="check"><input type="checkbox" id="s_ladder"> Price ladder</label>
-  <h3>Your rules (read-only)</h3>
-  <pre id="rulesBox">loading...</pre>
+  <h3>House rules</h3>
+  <div class="rules-switch">
+    <button type="button" class="switch" id="rulesToggle" role="switch" aria-checked="true" aria-label="House rules"><i></i></button>
+    <div><b id="rulesState">On</b><small id="rulesHelp">Every plan and paper ticket is checked against your rules; breaks cost XP.</small></div>
+  </div>
+  <details class="rules-detail"><summary>Your rule values (edit in memory/user-preferences.md)</summary><pre id="rulesBox">loading...</pre></details>
+  <h3>Your data</h3>
+  <p class="data-note" id="dataNote">Saved on this computer in <code>memory/app.db</code>; it survives closing the app and clearing the browser. A daily backup is kept in <code>memory/backups/</code>.</p>
+  <div class="row data-row">
+    <a class="btn-link" href="/api/export" download="trading-agent-export.json">⬇ Export backup</a>
+    <label class="btn-link file">⬆ Import backup<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+  </div>
   <div class="row"><button id="saveSettings">Save</button><button class="ghost" data-close>Close</button></div>
 </aside>
 

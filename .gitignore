@@ -14,3 +14,7 @@ memory/sessions.md
 memory/positions.json
 memory/paper.json
 memory/paper.tmp
+memory/app.db
+memory/app.db-wal
+memory/app.db-shm
+memory/backups/

@@ -703,5 +703,39 @@ button.play.sm { font-size:15px; padding:11px 22px; }
              background:color-mix(in srgb, var(--warn) 16%, transparent); border:1px solid color-mix(in srgb, var(--warn) 50%, transparent); animation:rise .4s var(--ease) both; }
 .ch-banner b { color:var(--warn); } .ch-banner.done { background:color-mix(in srgb, var(--good) 14%, transparent); border-color:color-mix(in srgb, var(--good) 45%, transparent); }
 .fx-canvas { position:fixed; inset:0; width:100vw; height:100vh; z-index:70; pointer-events:none; }
+
+/* ---------- house rules switch, freestyle track, data controls ---------- */
+button.switch { position:relative; width:52px; height:30px; padding:0; flex:none; border-radius:99px; background:var(--line-2); box-shadow:inset 0 0 0 1px var(--line-2);
+                transition:background .25s var(--ease); }
+button.switch::before { display:none; }
+button.switch i { position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.35);
+                  transition:transform .25s var(--ease); }
+button.switch.on { background:var(--good); } button.switch.on i { transform:translateX(22px); }
+.rules-switch { display:flex; align-items:center; gap:12px; margin:6px 0 4px; }
+.rules-switch b { display:block; font-size:15px; } .rules-switch small { color:var(--muted); font-size:12.5px; line-height:1.4; }
+.rules-detail { margin:4px 0 12px; } .rules-detail summary { cursor:pointer; font-size:12.5px; color:var(--text-2); }
+.data-note { font-size:12.5px; color:var(--muted); margin:4px 0 0; }
+.btn-link { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:11px; font-size:13.5px; font-weight:600; color:var(--text);
+            text-decoration:none; cursor:pointer; box-shadow:inset 0 0 0 1px var(--line-2); transition:box-shadow .2s; }
+.btn-link:hover { box-shadow:inset 0 0 0 1px var(--accent); }
+.rules-pill { margin-left:auto; padding:4px 11px; border-radius:99px; font-size:11.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; }
+.rules-pill.on { color:var(--good); background:color-mix(in srgb, var(--good) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--good) 45%, transparent); }
+.rules-pill.off { color:#1b1300; background:var(--warn); box-shadow:none; }
+.rules-pill::before { display:none; }
+.rules-off-note { margin:10px 0 0; padding:8px 11px; border-radius:10px; font-size:12.5px; color:var(--text-2);
+                  background:color-mix(in srgb, var(--warn) 12%, transparent); border:1px dashed color-mix(in srgb, var(--warn) 55%, transparent); }
+.xp-preview.xp-free b { color:var(--brand-3); }
+.free-tag { font-size:10.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--brand-3); }
+.track .tk.liq { background:transparent; border-left:2px dashed var(--bad); width:0; }
+.hr-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+#hRules.off .rule-list { opacity:.45; text-decoration:line-through; text-decoration-color:var(--muted); }
+.fs-track { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; padding:8px 10px; border-radius:11px;
+            background:color-mix(in srgb, var(--brand-3) 8%, transparent); border:1px solid color-mix(in srgb, var(--brand-3) 30%, transparent); }
+.fs-track.live { box-shadow:0 0 0 2px color-mix(in srgb, var(--brand-3) 35%, transparent); }
+.fs-lvl { font-weight:800; font-size:12px; color:var(--brand-3); }
+.fs-meta { grid-column:1 / -1; font-size:12px; color:var(--text-2); }
+.xp.fs i, #pXp i.fs { background:linear-gradient(90deg, var(--brand-3), var(--brand-1)); }
+.q-off { margin:-4px 0 10px; font-size:13px; color:var(--text-2); }
+:root[data-rules="off"] .badge-sim::after { content:" · RULES OFF"; }
 @keyframes xpPop { 0% { opacity:0; transform:translate(-50%, 20px) scale(.6); } 20% { opacity:1; transform:translate(-50%, 0) scale(1.1); }
                    70% { opacity:1; transform:translate(-50%, -30px) scale(1); } 100% { opacity:0; transform:translate(-50%, -70px) scale(.95); } }

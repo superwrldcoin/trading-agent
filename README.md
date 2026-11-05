@@ -48,16 +48,38 @@ targets (scale-out 40/40/20) and liquidation are simulated from 15M bars, stop-f
 journal shows the equity curve, win rate, R, and your P(T1) calibration. A quick check with a stop and targets
 gets a **Paper this setup** button that fills the ticket; you still open it yourself.
 
-Simulated only: no real orders, exchange keys or wallets. Data lives in `memory/paper.json` (private, gitignored).
+Simulated only: no real orders, exchange keys or wallets.
 CLI: `python tools/paper.py status | open .. | close PT-001 | cancel PT-002 | reset --equity 10000 | stats`.
+
+### House rules switch
+Your Trading rules can be switched **on or off** (Settings → House rules, the pill on the ticket, or the switch on
+Home's House rules card; CLI: `python tools/rules_check.py --set-enabled on|off`). It's one app-wide setting:
+
+| | Rules on | Rules off |
+|---|---|---|
+| Stop / targets | required | optional (size by units or contracts without a stop) |
+| Rule checks | every plan and ticket; breaks flagged, some block | none, no prompts, quick check says "Rules: off" |
+| Leverage | slider to 50x, your caps flagged | slider to 125x; only the margin math limits it |
+| XP | discipline XP, streaks, daily challenge | **Freestyle XP** from results (R won, T1 first, good P(T1) calls), capped 60/day |
+
+Risk in $, liquidation and R are always shown, as information. Your rule values are kept for when you switch back.
+
+### Where your data lives
+Everything is in one SQLite file, `memory/app.db` (private, gitignored): the paper account and journal, settings,
+and the rules switch. It survives closing the app, restarts and clearing the browser. The first change each day
+snapshots it to `memory/backups/app-YYYY-MM-DD.db` (14 days kept). **Settings → Your data** exports a JSON backup
+and imports one (your current data is backed up before an import). CLI: `python tools/store.py info | export | import FILE | backup`.
+The tables are per user (one "local" user today), ready for more players later. `memory/paper.json` from older
+versions is imported automatically on first run and left in place.
 
 **Home** (`#home`) is the start screen: Play, live markets, your level / XP / streak / badges, house rules, and the
 **daily challenge**: one symbol per UTC day (crypto only on weekends). Paper a rule-clean ticket on it with a
 P(T1) call and weighted R at or above your minimum for +40 XP, plus 20 more if it reaches T1 before the stop. Once a day.
 XP rewards discipline (planned, rule-clean, journaled trades) more than P&L, and P&L XP is capped per day.
 
-UI smoke test (no npm packages; needs Node 22+ and Chrome or Edge): start the app with
-`TA_PAPER_PATH=tools/output/paper-smoke.json`, then `node tests/e2e/ui_smoke.mjs --base http://127.0.0.1:8765`.
+UI smoke test (no npm packages; needs Node 22+ and Chrome or Edge): start the app on a throwaway database with
+`TA_DB_PATH=tools/output/e2e/app-e2e.db python app/server.py --no-browser --port 8799`, then
+`node tests/e2e/ui_smoke.mjs` (33 checks: navigation, hand-offs, daily challenge, rules switch and persistence).
 
 ## Everyday commands
 

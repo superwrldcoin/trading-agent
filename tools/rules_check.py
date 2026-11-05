@@ -2,11 +2,16 @@
 
   python tools/rules_check.py --symbol BTC/USDT --side long --leverage 20 [--risk-pct 1.5] [--weighted-r 1.8]
       [--stop 84000 | --no-stop] [--notional 17000] [--liq-touch-5d 64] [--option-premium 2500] [--json]
+  python tools/rules_check.py --set-enabled on|off      (the user's switch; the agent never flips it)
 
 Rules live in a ```json block after `<!-- rules -->` in user-preferences.md; null = not set. Context comes from
 memory/positions.json (open positions, equity) and memory/trades.md (last loss, trades today). Each rule is
 PASS / BREAKS / not set / unknown (an input is missing). A checklist the user configured, not advice.
 Skill: skills/rules-check.md.
+
+The user can switch the rules off (web app Settings, or `--set-enabled off`): then nothing is checked anywhere
+(quick check, paper desk, this CLI) and reports say "Rules: off". The rules themselves are kept for when they're
+switched back on.
 """
 from __future__ import annotations
 
@@ -26,6 +31,23 @@ from tools import levels, positions, universe  # noqa: E402
 PREFS_PATH = ROOT / "memory" / "user-preferences.md"
 TRADES_PATH = ROOT / "memory" / "trades.md"
 THEMES = universe.themes()  # id -> theme, from memory/universe.yaml asset_class
+
+
+RULES_OFF = "Rules: off (switched off by the user; nothing is checked or penalized)"
+
+
+def enabled() -> bool:
+    """The app-wide rules switch (stored in memory/app.db). On unless the user turned it off."""
+    try:
+        from tools import store
+        return bool(store.setting("rules_enabled"))
+    except Exception:   # an unreadable store must not silently disable the user's rules
+        return True
+
+
+def set_enabled(on: bool) -> bool:
+    from tools import store
+    return bool(store.set_settings({"rules_enabled": bool(on)})["rules_enabled"])
 
 
 def load_rules(path: Path | None = None) -> dict:
@@ -136,8 +158,9 @@ def main(argv: list[str]) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description="Pre-trade rules gate.")
-    ap.add_argument("--symbol", required=True)
+    ap.add_argument("--symbol")
     ap.add_argument("--side", choices=["long", "short"])
+    ap.add_argument("--set-enabled", choices=["on", "off"], help="switch the rules on or off app-wide (the user's choice)")
     ap.add_argument("--leverage", type=float)
     ap.add_argument("--risk-pct", type=float)
     ap.add_argument("--weighted-r", type=float)
@@ -149,6 +172,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--option-premium", type=float, help="total premium in $")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    if a.set_enabled:
+        print(f"Rules are now {'on' if set_enabled(a.set_enabled == 'on') else 'off'}.")
+        return 0
+    if not a.symbol:
+        ap.error("--symbol is required")
+    if not enabled():
+        print(RULES_OFF)
+        return 0
     sym = a.symbol.upper()
     if sym not in levels.WATCHLIST:
         print(f"ERROR: {sym} not on the watchlist")
