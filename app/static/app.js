@@ -57,6 +57,11 @@ function showResult(res){
   lastMarkdown = res.markdown || "**Error**";
   const r = $("#results"); r.hidden = false; r.classList.remove("enter"); void r.offsetWidth; r.classList.add("enter");
   Report.render($("#out"), lastMarkdown, { onCopy: copyReport });
+  const plan = res.plan || null;   // quick checks with a side, stop and targets can pre-fill the paper ticket
+  if (window.Paper) Paper.plan = plan;
+  $("#planBar").hidden = !plan;
+  if (plan) $("#planText").innerHTML = `<b>${esc(plan.symbol)} ${esc(plan.side)}</b> · stop ${esc(String(plan.stop))} · targets ${esc(plan.targets.join(" / "))}` +
+    `<small>Practice it on the paper desk: you review and open it yourself.</small>`;
   r.scrollIntoView({ behavior: animOn() ? "smooth" : "auto", block: "start" });
 }
 async function cancel(){ if (current) await post(`/api/jobs/${current.id}/cancel`, { text: "cancel" }); }
@@ -88,8 +93,9 @@ function applySettings(){
 function openDrawer(id){
   document.querySelectorAll(".drawer").forEach(d => { d.classList.toggle("open", d.id === id); d.setAttribute("aria-hidden", d.id !== id); });
   $("#scrim").hidden = !id; document.body.classList.toggle("drawer-open", !!id);
+  const view = $("main").dataset.view === "paper" ? "paperBtn" : "analyzeBtn";
   document.querySelectorAll(".appbar .seg-btn").forEach(b => b.classList.toggle("active",
-    (id === "settings" && b.id === "settingsBtn") || (id === "history" && b.id === "historyBtn") || (!id && b.id === "analyzeBtn")));
+    (id === "settings" && b.id === "settingsBtn") || (id === "history" && b.id === "historyBtn") || (!id && b.id === view)));
   if (id){ const f = document.getElementById(id).querySelector("input, select, button"); if (f) setTimeout(() => f.focus(), 50); }
 }
 function closeDrawers(){ openDrawer(""); }
@@ -129,7 +135,7 @@ async function openHistory(){
     const li = document.createElement("li"); li.tabIndex = 0; li.style.setProperty("--i", Math.min(k, 15));
     li.innerHTML = `<span class="h-icon k-${esc(it.kind)}">${icon[it.kind] || "•"}</span><span class="h-body"><b>${esc(String(it.text).slice(0, 70))}</b>` +
       `<small>${esc(it.kind)} · ${esc(ago(it.utc))}${it.ok ? "" : ' · <span class="st st-fail">✕ failed</span>'}</small></span>`;
-    const open = async () => { const d = await (await fetch("/api/history/" + it.id)).json(); closeDrawers(); showResult(d); };
+    const open = async () => { const d = await (await fetch("/api/history/" + it.id)).json(); if (window.Paper) Paper.setView("analyze"); closeDrawers(); showResult(d); };
     const del = document.createElement("button"); del.className = "ghost h-del"; del.textContent = "✕"; del.title = "Delete this run"; del.setAttribute("aria-label", "Delete this run");
     del.onclick = async e => { e.stopPropagation(); try { await post("/api/history/" + it.id + "/delete", {}); openHistory(); } catch(err){ toast("Delete failed"); } };
     li.appendChild(del);
@@ -148,7 +154,7 @@ $("#noticeOk").onclick = () => { localStorage.setItem("ta_notice", "1"); notice.
 
 $("#quick").onclick = () => run("quick"); $("#agent").onclick = () => run("agent"); $("#portfolio").onclick = () => run("portfolio");
 $("#cancel").onclick = cancel; $("#settingsBtn").onclick = openSettings; $("#historyBtn").onclick = openHistory;
-$("#analyzeBtn").onclick = () => { closeDrawers(); $("#q").focus(); window.scrollTo({ top: 0, behavior: animOn() ? "smooth" : "auto" }); };
+$("#analyzeBtn").onclick = () => { if (window.Paper) Paper.setView("analyze"); closeDrawers(); $("#q").focus(); window.scrollTo({ top: 0, behavior: animOn() ? "smooth" : "auto" }); };
 $("#saveSettings").onclick = saveSettings; document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeDrawers);
 $("#scrim").onclick = closeDrawers;
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) run(settings.action); });

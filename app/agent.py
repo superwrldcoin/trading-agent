@@ -68,17 +68,29 @@ def build_prompt(text: str) -> str:
 
 
 def run_quick(text: str, equity: float | None = None, risk_pct: float | None = None, progress=None) -> dict:
-    """Returns {"ok", "markdown", "seconds"}; never raises for user-facing errors."""
+    """Returns {"ok", "markdown", "seconds"[, "plan"]}; never raises for user-facing errors."""
     t0 = time.time()
     try:
         res = quick_check.run(text, equity=equity, risk_pct=risk_pct, progress=progress)
         md = quick_check.render(res)
         ok = True
+        plan = paper_plan(res)
     except quick_check.ParseError as exc:
-        md, ok = f"**Couldn't read that request:** {exc}\n\nTry e.g. `BTC long, 20x, entry 98,400`.", False
+        md, ok, plan = f"**Couldn't read that request:** {exc}\n\nTry e.g. `BTC long, 20x, entry 98,400`.", False, None
     except fetch_prices.FetchError as exc:
-        md, ok = f"**FETCH FAILED:** {exc}", False
-    return {"ok": ok, "markdown": md, "seconds": round(time.time() - t0, 1)}
+        md, ok, plan = f"**FETCH FAILED:** {exc}", False, None
+    out = {"ok": ok, "markdown": md, "seconds": round(time.time() - t0, 1)}
+    if plan:
+        out["plan"] = plan
+    return out
+
+
+def paper_plan(res: dict) -> dict | None:
+    """Ticket pre-fill for the paper desk from a quick check (the user still has to click to open it)."""
+    if not res.get("side") or res.get("stop") is None or not res.get("targets"):
+        return None
+    return {"symbol": res["symbol"], "side": res["side"], "entry": res.get("entry"), "stop": res["stop"],
+            "targets": [t["price"] for t in res["targets"]], "leverage": (res.get("request") or {}).get("leverage")}
 
 
 def run_portfolio() -> dict:
