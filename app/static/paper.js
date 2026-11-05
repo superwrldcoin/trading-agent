@@ -106,7 +106,9 @@ const Paper = (() => {
       `<div><small>Weighted R</small><b class="${p.weighted_R >= 2 ? "up" : "warn"}">${n(p.weighted_R, 2)}</b></div>` +
       `</div>` + ladder(t, p) +
       (p.rules.length ? `<ul class="rules">${p.rules.map(r => `<li class="${r.result === "BREAKS" ? "brk" : "ok"}">${r.result === "BREAKS" ? "✕" : "✓"} ${esc(r.rule)} <small>${esc(r.value)} vs ${esc(r.limit)}</small></li>`).join("")}</ul>` : "") +
-      (p.notes.length ? `<p class="muted small">${p.notes.map(esc).join(" · ")}</p>` : "");
+      (p.notes.length ? `<p class="muted small">${p.notes.map(esc).join(" · ")}</p>` : "") +
+      (p.xp ? `<div class="xp-preview ${p.xp.total >= 0 ? "xp-up" : "xp-down"}"><b>${p.xp.total >= 0 ? "+" : ""}${p.xp.total} XP</b> if you open it` +
+        `<small>${p.xp.parts.map(x => `${esc(x.label)} ${x.xp > 0 ? "+" : ""}${x.xp}`).join(" · ")}${p.xp.note ? ` · ${esc(p.xp.note)}` : ""}</small></div>` : "");
     $("#tSubmit").classList.toggle("warn", breaks.length > 0);
   }
   // horizontal stop → entry → targets ladder, with liquidation when it's on the chart
@@ -158,7 +160,24 @@ const Paper = (() => {
     if (s.error){ $("#pUpdated").textContent = s.error; $("#pLive").classList.add("off"); return; }
     lastSnap = s; updatedAt = Date.now(); $("#pLive").classList.toggle("off", Object.keys(s.errors).length > 0);
     $("#pUpdated").textContent = Object.keys(s.errors).length ? "feed error: " + Object.keys(s.errors).join(", ") : "live · updated just now";
-    tiles(s); positions(s); journal(s);
+    tiles(s); positions(s); journal(s); noteProgress(s.progress);
+  }
+  // ---- XP: chip on the desk, "+N XP" pop and level-up toast when the journal earns something new ----
+  function noteProgress(pg){
+    if (!pg) return;
+    const chip = $("#pXp"); chip.hidden = false;
+    chip.innerHTML = `<b>Lv ${pg.level}</b><i style="--w:${pg.pct.toFixed(1)}%"></i><span>${pg.xp} XP</span>${pg.streak ? `<em>🔥${pg.streak}</em>` : ""}`;
+    let seen = null; try { seen = JSON.parse(localStorage.getItem("ta_xp_seen") || "null"); } catch(e){}
+    localStorage.setItem("ta_xp_seen", JSON.stringify({ xp: pg.xp, level: pg.level }));
+    if (!seen || seen.xp === pg.xp) return;               // first visit: nothing to celebrate
+    const d = pg.xp - seen.xp, why = pg.recent.length ? pg.recent[0].label : "";
+    pop(`${d > 0 ? "+" : ""}${d} XP`, d > 0);
+    if (pg.level > seen.level) toast(`Level up! Level ${pg.level} · ${pg.rank}`);
+    else toast(`${d > 0 ? "+" : ""}${d} XP${why ? " · " + why : ""}`);
+  }
+  function pop(text, good){
+    const el = document.createElement("div"); el.className = "xp-pop " + (good ? "up" : "down"); el.textContent = text;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 1600);
   }
   function tiles(s){
     const a = s.account, st = s.stats;
@@ -295,7 +314,8 @@ const Paper = (() => {
   setInterval(() => { if (updatedAt && visible() && !$("#pLive").classList.contains("off"))
     $("#pUpdated").textContent = `live · updated ${Math.round((Date.now() - updatedAt) / 1000)}s ago`; }, 1000);
   init();
-  return { setView, prefill, openSymbol, plan: null };
+  $("#pXp").onclick = () => go("home");
+  return { setView, prefill, openSymbol, noteProgress, plan: null };
 })();
 // A top-level const is not a window property; app.js looks the desk up as window.Paper.
 window.Paper = Paper;

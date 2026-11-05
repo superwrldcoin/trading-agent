@@ -44,12 +44,19 @@ const Home = (() => {
     const box = $("#hPlayer");
     let s; try { s = await (await fetch("/api/paper")).json(); } catch(e){ s = { error: "server unreachable" }; }
     if (s.error){ box.innerHTML = `<h3>Your desk</h3><p class="muted small">Paper desk unavailable: ${esc(s.error)}</p>`; return; }
-    const a = s.account, st = s.stats, open = s.trades.filter(t => t.status === "open" || t.status === "pending").length;
+    const a = s.account, st = s.stats, pg = s.progress, open = s.trades.filter(t => t.status === "open" || t.status === "pending").length;
+    if (window.Paper) Paper.noteProgress(pg);
+    const td = pg.today, xpSign = x => (x > 0 ? "+" : "") + x;
     box.innerHTML =
-      `<div class="pl-head"><span class="avatar" aria-hidden="true">◆</span><div><small>Level 1</small><h3>Rookie</h3></div>` +
-      `<span class="badge-soon" title="XP, levels and badges arrive in the next build">XP soon</span></div>` +
-      `<div class="xp" role="img" aria-label="XP bar, not active yet"><i style="--w:0%"></i></div>` +
-      `<small class="muted">XP will come from rule-clean trades, journal notes, accurate P(T1) calls and paper P&amp;L (capped per day).</small>` +
+      `<div class="pl-head"><span class="avatar" aria-hidden="true">${pg.level}</span><div><small>Level ${pg.level}</small><h3>${esc(pg.rank)}</h3></div>` +
+      `<span class="streak ${pg.streak ? "on" : ""}" title="Days in a row with rule-clean paper trades (best ${pg.best_streak})">🔥 ${pg.streak}</span></div>` +
+      `<div class="xp" role="progressbar" aria-valuemin="0" aria-valuemax="${pg.need}" aria-valuenow="${pg.into}" aria-label="XP to next level"><i style="--w:${pg.pct.toFixed(1)}%"></i></div>` +
+      `<div class="xp-meta"><b>${pg.xp} XP</b><span>${pg.into} / ${pg.need} to level ${pg.level + 1}</span></div>` +
+      `<div class="today"><span title="Only the first ${td.fill_cap} fills a day earn XP">Trades today <b>${td.fills}/${td.fill_cap}</b></span>` +
+      `<span title="Paper P&amp;L XP is capped per day">P&amp;L XP <b>${td.pnl_xp}/${td.pnl_cap}</b></span><span>Today <b>${xpSign(td.xp)} XP</b></span></div>` +
+      `<div class="badges">${pg.badges.map(b => `<span class="bdg ${b.earned ? "got" : ""}" title="${esc(b.name)}: ${esc(b.how)}${b.earned ? " ✓" : ""}">${esc(b.name)}</span>`).join("")}</div>` +
+      (pg.recent.length ? `<ul class="xp-feed">${pg.recent.slice(0, 4).map(e => `<li><span>${esc(e.id)} · ${esc(e.label)}</span><b class="${e.xp >= 0 ? "up" : "down"}">${xpSign(e.xp)}</b></li>`).join("")}</ul>`
+        : `<small class="muted">Earn XP with planned, rule-clean paper trades: a note, a P(T1) call and respecting your stop all count. Wins add XP too, capped per day.</small>`) +
       `<div class="pl-stats">` +
       `<div><small>Paper equity</small><b class="${tone(a.return_pct)}">$${n(a.equity)}</b></div>` +
       `<div><small>Closed</small><b>${st.closed}</b></div>` +

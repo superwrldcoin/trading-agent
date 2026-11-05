@@ -71,7 +71,7 @@
       <button class="mode" data-mode="quick"><span class="m-ico">⚡</span><b>Quick check</b><span>One line in, a full plan out. No AI, free, seconds.</span><em>Free</em></button>
       <button class="mode" data-mode="agent"><span class="m-ico">✦</span><b>Full agent</b><span>Claude Code with every skill, the bear case and news.</span><em id="hAgentTag">Claude</em></button>
       <button class="mode" data-mode="paper"><span class="m-ico">▶</span><b>Paper desk</b><span>Simulated trades at live prices, journal and calibration.</span><em>Live</em></button>
-      <div class="mode locked" aria-disabled="true"><span class="m-ico">★</span><b>Daily challenge</b><span>One symbol a day. Find a setup worth 2R+ and paper it.</span><em>Soon</em></div>
+      <div class="mode locked" aria-disabled="true"><span class="m-ico">★</span><b>Daily challenge</b><span>One symbol a day. Find a setup worth 2R+ and paper it.</span><em>Next</em></div>
     </div>
   </section>
 
@@ -120,6 +120,7 @@
     <div class="paper-head">
       <div><h2>Paper desk <span class="badge-sim">SIMULATED</span></h2>
         <p class="sub">Live prices from the same feeds as the analysis. No real orders, keys or wallets.</p></div>
+      <button class="xp-chip" id="pXp" title="Your level and XP (Home has the details)" hidden></button>
       <span class="live" id="pLive"><i></i><span id="pUpdated">connecting…</span></span>
     </div>
     <div class="tiles" id="pTiles"></div>
