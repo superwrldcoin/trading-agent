@@ -276,6 +276,11 @@ def plan_ticket(state: dict, req: dict, price: float) -> dict:
                "contracts": trade["contracts"], "contract_name": trade["contract_name"], "equity": eq,
                "notes": [n for n in res["notes"] if "per 1 unit" not in n]}
     preview["rules"] = rules_for(state, trade, preview)
+    # recorded on the trade so XP can tell rule-clean trades from rule breaks later
+    trade["weighted_R"] = res["weighted_R"]          # kept for the daily challenge (needs the planned R at open)
+    trade["rules_checked"] = bool(preview["rules"])
+    trade["rule_breaks"] = [r["rule"] for r in preview["rules"] if r["result"] == "BREAKS"]
+    preview["xp"] = xp_preview(state, trade)
     return {"trade": trade, "preview": preview}
 
 
@@ -417,6 +422,217 @@ def insights(s: dict, closed: list[dict]) -> list[str]:
     return out[:4]
 
 
+# ---------- progress: XP, levels, streaks, badges ----------
+# XP rewards discipline first and results second (the user's choice, 2026-11-05):
+#   on fill:  planned trade (stop + targets) +10, P(T1) called +5, journal note +5, rule-clean +15,
+#             each rule broken -25 (max -50). Only the first max_trades_per_day fills of a UTC day earn the
+#             positive part, so trading more doesn't level you faster.
+#   on close: exit by stop or target (plan respected) +10, liquidation -30, a P(T1) call on the right side +5,
+#             paper P&L +10 per R won (losses cost nothing), P&L XP capped at PNL_XP_CAP per UTC day.
+# Derived from the journal every time (never stored), so it can't drift; archived accounts still count.
+XP = {"plan": 10, "p_t1": 5, "note": 5, "clean": 15, "break": -25, "break_floor": -50,
+      "respected": 10, "liquidation": -30, "good_call": 5, "per_R": 10}
+PNL_XP_CAP = 50
+NOTE_MIN = 10
+DEFAULT_DAILY_TRADES = 3
+RANKS = [(1, "Rookie"), (3, "Apprentice"), (5, "Analyst"), (8, "Strategist"), (11, "Risk Manager"), (15, "Desk Lead")]
+BADGES = [("first_fill", "First fill", "Open your first paper trade"),
+          ("first_t1", "Bullseye", "Hit T1 on a paper trade"),
+          ("clean_10", "By the book", "10 rule-clean trades in a row"),
+          ("journal_10", "Journaler", "Write a note on 10 trades"),
+          ("streak_5", "Five-day streak", "5 days in a row with clean trades"),
+          ("calibrated", "Calibrated", "20+ P(T1) calls within 10 points of what happened"),
+          ("challenge_5", "Regular", "Complete 5 daily challenges")]
+
+# Daily challenge: one watchlist symbol per UTC day, the same for everyone with this watchlist (hash of the date).
+# Weekends draw from 24/7 crypto only, since CME and stocks are closed. Complete it by paper-trading that symbol
+# with a rule-clean ticket, a P(T1) call and planned weighted R >= your min_weighted_r: +40 XP, at most once a day,
+# and +20 more if that trade reaches T1 before its stop. It rewards one good setup, not more trades.
+CHALLENGE_XP = {"done": 40, "t1": 20}
+CHALLENGE_CLASSES = {"crypto", "equity_index", "energy"}
+CHALLENGE_EXTRA = {"MGC"}
+
+
+def _min_r() -> float:
+    try:
+        from tools import rules_check
+        v = (rules_check.load_rules() or {}).get("min_weighted_r")
+        return float(v) if v is not None else 2.0
+    except Exception:
+        return 2.0
+
+
+def challenge_symbol(day: str) -> str | None:
+    """The day's symbol (UTC date 'YYYY-MM-DD'): crypto only on Sat/Sun, else crypto + index/energy/gold micros."""
+    import hashlib
+    weekend = pd.Timestamp(day).dayofweek >= 5
+    pool = sorted(c["id"] for c in universe.core() if c["id"] in levels.WATCHLIST and
+                  (c["asset_class"] == "crypto" or (not weekend and (c["asset_class"] in CHALLENGE_CLASSES
+                                                                      or c["id"] in CHALLENGE_EXTRA))))
+    if not pool:
+        return None
+    return pool[int(hashlib.sha256(day.encode()).hexdigest(), 16) % len(pool)]
+
+
+def _qualifies(t: dict, min_r: float) -> list[tuple[str, bool]]:
+    return [("Rule-clean ticket", bool(t.get("rules_checked")) and not t.get("rule_breaks")),
+            ("P(T1) called", t.get("p_t1") is not None),
+            (f"Weighted R >= {min_r:g}", (t.get("weighted_R") or 0) >= min_r - 1e-9)]
+
+
+def challenge_events(trades: list[dict], min_r: float) -> list[dict]:
+    """XP events for every day's challenge in the journal (first qualifying fill of the day's symbol)."""
+    events, done = [], set()
+    for t in sorted([t for t in trades if t.get("opened_at")], key=lambda t: t["opened_at"]):
+        d = _day(t["opened_at"])
+        if d in done or t.get("symbol") != challenge_symbol(d) or not all(ok for _, ok in _qualifies(t, min_r)):
+            continue
+        done.add(d)
+        events.append({"ts": t["opened_at"], "id": t["id"], "label": "Daily challenge", "xp": CHALLENGE_XP["done"], "day": d})
+        if t["status"] == "closed" and t.get("t1_before_stop"):
+            events.append({"ts": t["closed_at"], "id": t["id"], "label": "Challenge T1", "xp": CHALLENGE_XP["t1"], "day": d})
+    return events
+
+
+def challenge(state: dict, now: pd.Timestamp | None = None) -> dict:
+    """Today's challenge card: symbol, goal checklist (best attempt so far), status and time to the UTC reset."""
+    now = now or pd.Timestamp.now(tz="UTC")
+    day, min_r = now.strftime("%Y-%m-%d"), _min_r()
+    sym = challenge_symbol(day)
+    tries = [t for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == day and t.get("symbol") == sym]
+    ev = [e for e in challenge_events(tries, min_r) if e["day"] == day]
+    best = max(tries, key=lambda t: sum(ok for _, ok in _qualifies(t, min_r)), default=None)
+    goals = _qualifies(best, min_r) if best else _qualifies({}, min_r)
+    done_id = next((e["id"] for e in ev if e["label"] == "Daily challenge"), None)
+    reset = (now.normalize() + pd.Timedelta(days=1))
+    return {"date": day, "symbol": sym, "min_R": min_r, "reward": CHALLENGE_XP, "done": done_id is not None,
+            "trade_id": done_id, "t1": any(e["label"] == "Challenge T1" for e in ev), "attempts": len(tries),
+            "goals": [{"label": l, "ok": bool(best) and ok} for l, ok in goals],
+            "resets_at": reset.isoformat(), "weekend": pd.Timestamp(day).dayofweek >= 5}
+
+
+def level_for(xp: int) -> dict:
+    """Level L needs 100 + 50*(L-1) XP to reach L+1 (100, 150, 200, ...)."""
+    lvl, floor = 1, 0
+    while xp >= floor + 100 + 50 * (lvl - 1):
+        floor += 100 + 50 * (lvl - 1)
+        lvl += 1
+    need = 100 + 50 * (lvl - 1)
+    rank = [name for start, name in RANKS if lvl >= start][-1]
+    return {"level": lvl, "rank": rank, "into": xp - floor, "need": need, "pct": (xp - floor) / need * 100}
+
+
+def _daily_cap() -> int:
+    try:
+        from tools import rules_check
+        n = (rules_check.load_rules() or {}).get("max_trades_per_day")
+        return int(n) if n else DEFAULT_DAILY_TRADES
+    except Exception:
+        return DEFAULT_DAILY_TRADES
+
+
+def _open_parts(t: dict, counted: bool) -> list[tuple[str, int]]:
+    """XP for a filled trade. `counted` = within today's trade cap."""
+    parts = []
+    if counted:
+        parts.append(("Planned trade", XP["plan"]))
+        if t.get("p_t1") is not None:
+            parts.append(("P(T1) called", XP["p_t1"]))
+        if len((t.get("note") or "").strip()) >= NOTE_MIN:
+            parts.append(("Journal note", XP["note"]))
+        if t.get("rules_checked") and not t.get("rule_breaks"):
+            parts.append(("Rule-clean", XP["clean"]))
+    if t.get("rule_breaks"):
+        parts.append((f"Broke {len(t['rule_breaks'])} rule(s)", max(XP["break_floor"], XP["break"] * len(t["rule_breaks"]))))
+    return parts
+
+
+def _all_trades(state: dict) -> list[dict]:
+    return [t for a in state.get("archive", []) for t in a["trades"]] + state["trades"]
+
+
+def _day(ts: str) -> str:
+    """UTC calendar day of an ISO timestamp."""
+    t = pd.Timestamp(ts)
+    return (t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")).strftime("%Y-%m-%d")
+
+
+def xp_preview(state: dict, trade: dict, now: pd.Timestamp | None = None) -> dict:
+    """What opening this ticket would earn right now (shown on the ticket before the user opens it)."""
+    today = (now or pd.Timestamp.now(tz="UTC")).strftime("%Y-%m-%d")
+    fills_today = sum(1 for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == today)
+    counted = fills_today < _daily_cap()
+    parts = _open_parts(trade, counted)
+    return {"total": sum(x for _, x in parts), "parts": [{"label": l, "xp": x} for l, x in parts],
+            "capped": not counted, "note": None if counted else f"Daily trade cap ({_daily_cap()}) reached: only penalties apply"}
+
+
+def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
+    now = now or pd.Timestamp.now(tz="UTC")
+    cap = _daily_cap()
+    trades = sorted([t for t in _all_trades(state) if t.get("opened_at")], key=lambda t: t["opened_at"])
+    events, fills_per_day, pnl_per_day = [], {}, {}
+    for t in trades:
+        d = _day(t["opened_at"])
+        fills_per_day[d] = fills_per_day.get(d, 0) + 1
+        for label, xp in _open_parts(t, fills_per_day[d] <= cap):
+            events.append({"ts": t["opened_at"], "id": t["id"], "label": label, "xp": xp})
+    for t in sorted([t for t in trades if t["status"] == "closed"], key=lambda t: t["closed_at"]):
+        ts, d = t["closed_at"], _day(t["closed_at"])
+        reason = t.get("exit_reason")
+        if reason in ("stop", "target"):
+            events.append({"ts": ts, "id": t["id"], "label": "Plan respected", "xp": XP["respected"]})
+        elif reason == "liquidation":
+            events.append({"ts": ts, "id": t["id"], "label": "Liquidated", "xp": XP["liquidation"]})
+        if t.get("p_t1") is not None and t.get("t1_before_stop") is not None \
+                and (t["p_t1"] >= 50) == bool(t["t1_before_stop"]) and t["p_t1"] != 50:
+            events.append({"ts": ts, "id": t["id"], "label": "Good P(T1) call", "xp": XP["good_call"]})
+        if (t.get("R") or 0) > 0:
+            room = PNL_XP_CAP - pnl_per_day.get(d, 0)
+            xp = min(room, int(round(t["R"] * XP["per_R"])))
+            if xp > 0:
+                pnl_per_day[d] = pnl_per_day.get(d, 0) + xp
+                events.append({"ts": ts, "id": t["id"], "label": f"Won {t['R']:+.2f}R", "xp": xp})
+    ch_events = challenge_events(trades, _min_r())
+    events += [{k: v for k, v in e.items() if k != "day"} for e in ch_events]
+    events.sort(key=lambda e: e["ts"])
+    total = max(0, sum(e["xp"] for e in events))
+
+    # clean streak: consecutive UTC days with >= 1 fill and no rule breaks, ending today or yesterday
+    days = {}
+    for t in trades:
+        d = _day(t["opened_at"])
+        days[d] = days.get(d, True) and not t.get("rule_breaks")
+    streak = best = run = 0
+    prev = None
+    for d in sorted(days):
+        cur = pd.Timestamp(d)
+        run = (run + 1 if prev is not None and (cur - prev).days == 1 else 1) if days[d] else 0
+        best, prev = max(best, run), cur
+    last = max(days) if days else None
+    if last and days[last] and (now.normalize().tz_localize(None) - pd.Timestamp(last)).days <= 1:
+        streak = run
+
+    closed = [t for t in trades if t["status"] == "closed"]
+    clean_run = best_clean = 0
+    for t in trades:
+        clean_run = clean_run + 1 if t.get("rules_checked") and not t.get("rule_breaks") else 0
+        best_clean = max(best_clean, clean_run)
+    calls = [t for t in closed if t.get("p_t1") is not None and t.get("t1_before_stop") is not None]
+    cal_ok = len(calls) >= 20 and all(abs(c["called"] - c["actual"]) <= 10 for c in calibration(calls) if c["n"] >= 5)
+    earned = {"first_fill": bool(trades), "first_t1": any(t.get("t1_before_stop") for t in closed),
+              "clean_10": best_clean >= 10, "journal_10": sum(1 for t in trades if len((t.get("note") or "").strip()) >= NOTE_MIN) >= 10,
+              "streak_5": best >= 5, "calibrated": cal_ok,
+              "challenge_5": sum(1 for e in ch_events if e["label"] == "Daily challenge") >= 5}
+    today = now.strftime("%Y-%m-%d")
+    return {"xp": total, **level_for(total), "streak": streak, "best_streak": best,
+            "today": {"fills": fills_per_day.get(today, 0), "fill_cap": cap,
+                      "pnl_xp": pnl_per_day.get(today, 0), "pnl_cap": PNL_XP_CAP,
+                      "xp": sum(e["xp"] for e in events if _day(e["ts"]) == today)},
+            "badges": [{"id": k, "name": n, "how": h, "earned": earned[k]} for k, n, h in BADGES],
+            "recent": events[-8:][::-1]}
+
+
 def snapshot(state: dict, marks: dict, errors: dict | None = None) -> dict:
     """Everything the UI shows: account, trades with live P&L, journal stats."""
     rows = []
@@ -437,7 +653,7 @@ def snapshot(state: dict, marks: dict, errors: dict | None = None) -> dict:
                         "open_risk": open_risk, "open_risk_pct": open_risk / bal * 100 if bal else None,
                         "return_pct": (bal + unreal) / state["account"]["start_equity"] * 100 - 100},
             "trades": rows[::-1], "marks": marks, "errors": errors or {}, "stats": stats(state),
-            "broker": PaperBroker.name}
+            "progress": progress(state), "challenge": challenge(state), "broker": PaperBroker.name}
 
 
 # ---------- API used by the web server and the CLI ----------
@@ -550,7 +766,9 @@ def main(argv: list[str]) -> int:
                 for sym, err in snap["errors"].items():
                     print(f"  FETCH FAILED {sym}: {err}")
             else:
-                s = snap["stats"]
+                s, pg = snap["stats"], snap["progress"]
+                print(f"Level {pg['level']} {pg['rank']}: {pg['xp']} XP ({pg['into']}/{pg['need']} to next), "
+                      f"clean streak {pg['streak']} day(s), best {pg['best_streak']}")
                 print(json.dumps({k: v for k, v in s.items() if k != "curve"}, indent=1, default=float))
     except (PaperError, fetch_prices.FetchError) as exc:
         print(f"ERROR: {exc}")

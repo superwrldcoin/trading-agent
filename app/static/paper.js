@@ -18,13 +18,10 @@ const Paper = (() => {
   const num = v => { const s = String(v ?? "").replace(/[$,\s]/g, ""); return s === "" ? null : Number(s); };
   const visible = () => $("main").dataset.view === "paper" && !document.hidden;
 
-  // ---- view switching ----
+  // ---- view switching (called by showView in app.js; navigate with go("paper")) ----
   function setView(v){
-    $("main").dataset.view = v;
     $("#paperView").hidden = v !== "paper";
-    document.querySelectorAll(".appbar .seg-btn").forEach(b => b.classList.toggle("active",
-      (v === "paper" && b.id === "paperBtn") || (v === "analyze" && b.id === "analyzeBtn")));
-    if (v === "paper"){ refresh(); quote(); schedule(); window.scrollTo({ top: 0, behavior: animOn() ? "smooth" : "auto" }); }
+    if (v === "paper"){ refresh(); quote(); schedule(); }
     else clearInterval(timer);
   }
   function schedule(){ clearInterval(timer); timer = setInterval(() => { if (visible()){ refresh(); quote(); } }, REFRESH_MS); }
@@ -37,15 +34,19 @@ const Paper = (() => {
     const saved = localStorage.getItem("ta_paper_sym");
     if (saved && cfg.watchlist.includes(saved)) sel.value = saved;
     onSymbol(false);
-    // deep links: #paper opens the desk; #paper?symbol=BTC/USDT&side=long&stop=..&targets=a,b[&entry=..&leverage=..] pre-fills a ticket
-    const m = location.hash.match(/^#paper(?:\?(.*))?$/);
+    // deep links: #paper opens the desk (the router in app.js); #paper?symbol=BTC/USDT&side=long&stop=..&targets=a,b[&entry=..&leverage=..] pre-fills a ticket
+    const m = location.hash.match(/^#paper\?(.*)$/);
     if (m){
-      const q = new URLSearchParams(m[1] || "");
+      const q = new URLSearchParams(m[1]);
       if (q.get("symbol") && q.get("side") && q.get("stop") && q.get("targets"))
         prefill({ symbol: q.get("symbol").toUpperCase(), side: q.get("side"), stop: num(q.get("stop")),
           targets: q.get("targets").split(",").map(num).filter(x => x != null), entry: num(q.get("entry")), leverage: num(q.get("leverage")) });
-      else setView("paper");
     }
+  }
+  // the home page's tickers open the desk on a symbol
+  function openSymbol(sym){
+    go("paper");
+    if (cfg.watchlist.includes(sym) && $("#tSym").value !== sym){ $("#tSym").value = sym; onSymbol(); }
   }
   const theme = () => cfg.themes[$("#tSym").value];
   const levCap = () => ((cfg.rules || {}).max_leverage || {})[theme()];
@@ -73,7 +74,7 @@ const Paper = (() => {
     document.querySelector('#tSizeMode [data-v="contracts"]').hidden = !c;
     if (!c && sizeMode === "contracts") setSizeMode("risk");
     if (clear){ $("#tStop").value = ""; $("#tTargets").value = ""; $("#tLimit").value = ""; }
-    lastPx = null; $("#tPx").textContent = "—"; $("#tChg").textContent = ""; levLabel(); quote(); previewSoon();
+    lastPx = null; $("#tPx").textContent = "—"; $("#tChg").textContent = ""; levLabel(); quote(); previewSoon(); banner();
   }
   function levLabel(){
     const v = Number($("#tLev").value), cap = levCap(), out = $("#tLevOut");
@@ -105,7 +106,9 @@ const Paper = (() => {
       `<div><small>Weighted R</small><b class="${p.weighted_R >= 2 ? "up" : "warn"}">${n(p.weighted_R, 2)}</b></div>` +
       `</div>` + ladder(t, p) +
       (p.rules.length ? `<ul class="rules">${p.rules.map(r => `<li class="${r.result === "BREAKS" ? "brk" : "ok"}">${r.result === "BREAKS" ? "✕" : "✓"} ${esc(r.rule)} <small>${esc(r.value)} vs ${esc(r.limit)}</small></li>`).join("")}</ul>` : "") +
-      (p.notes.length ? `<p class="muted small">${p.notes.map(esc).join(" · ")}</p>` : "");
+      (p.notes.length ? `<p class="muted small">${p.notes.map(esc).join(" · ")}</p>` : "") +
+      (p.xp ? `<div class="xp-preview ${p.xp.total >= 0 ? "xp-up" : "xp-down"}"><b>${p.xp.total >= 0 ? "+" : ""}${p.xp.total} XP</b> if you open it` +
+        `<small>${p.xp.parts.map(x => `${esc(x.label)} ${x.xp > 0 ? "+" : ""}${x.xp}`).join(" · ")}${p.xp.note ? ` · ${esc(p.xp.note)}` : ""}</small></div>` : "");
     $("#tSubmit").classList.toggle("warn", breaks.length > 0);
   }
   // horizontal stop → entry → targets ladder, with liquidation when it's on the chart
@@ -157,7 +160,38 @@ const Paper = (() => {
     if (s.error){ $("#pUpdated").textContent = s.error; $("#pLive").classList.add("off"); return; }
     lastSnap = s; updatedAt = Date.now(); $("#pLive").classList.toggle("off", Object.keys(s.errors).length > 0);
     $("#pUpdated").textContent = Object.keys(s.errors).length ? "feed error: " + Object.keys(s.errors).join(", ") : "live · updated just now";
-    tiles(s); positions(s); journal(s);
+    tiles(s); positions(s); journal(s); noteProgress(s.progress); noteChallenge(s.challenge);
+  }
+  // ---- daily challenge: banner on the ticket when it's today's symbol; one celebration when it's done ----
+  let challenge = null;
+  function noteChallenge(ch){
+    challenge = ch || null; banner();
+    if (ch && ch.done && window.FX) FX.once(`challenge:${ch.date}`, () => { FX.confetti(); toast(`Daily challenge complete! +${ch.reward.done} XP`); });
+  }
+  function banner(){
+    const b = $("#tChallenge"), ch = challenge;
+    b.hidden = !ch || ch.symbol !== $("#tSym").value;
+    if (b.hidden) return;
+    b.className = "ch-banner" + (ch.done ? " done" : "");
+    b.innerHTML = ch.done ? `🏆 Today's challenge is done (${esc(ch.trade_id)}). ${ch.t1 ? "T1 hit too." : `+${ch.reward.t1} XP more if it reaches T1 first.`}`
+      : `★ Daily challenge symbol: a rule-clean ticket with a P(T1) call and ${ch.min_R}R+ earns <b>+${ch.reward.done} XP</b>.`;
+  }
+  // ---- XP: chip on the desk, "+N XP" pop and level-up toast when the journal earns something new ----
+  function noteProgress(pg){
+    if (!pg) return;
+    const chip = $("#pXp"); chip.hidden = false;
+    chip.innerHTML = `<b>Lv ${pg.level}</b><i style="--w:${pg.pct.toFixed(1)}%"></i><span>${pg.xp} XP</span>${pg.streak ? `<em>🔥${pg.streak}</em>` : ""}`;
+    let seen = null; try { seen = JSON.parse(localStorage.getItem("ta_xp_seen") || "null"); } catch(e){}
+    localStorage.setItem("ta_xp_seen", JSON.stringify({ xp: pg.xp, level: pg.level }));
+    if (!seen || seen.xp === pg.xp) return;               // first visit: nothing to celebrate
+    const d = pg.xp - seen.xp, why = pg.recent.length ? pg.recent[0].label : "";
+    pop(`${d > 0 ? "+" : ""}${d} XP`, d > 0);
+    if (pg.level > seen.level){ toast(`Level up! Level ${pg.level} · ${pg.rank}`); if (window.FX) FX.confetti({ count: 200 }); }
+    else toast(`${d > 0 ? "+" : ""}${d} XP${why ? " · " + why : ""}`);
+  }
+  function pop(text, good){
+    const el = document.createElement("div"); el.className = "xp-pop " + (good ? "up" : "down"); el.textContent = text;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 1600);
   }
   function tiles(s){
     const a = s.account, st = s.stats;
@@ -257,7 +291,7 @@ const Paper = (() => {
   // ---- "Paper this setup" from a quick check ----
   let pendingPlan = null;
   function prefill(plan){
-    setView("paper");
+    go("paper");
     if (cfg.watchlist.includes(plan.symbol)){ $("#tSym").value = plan.symbol; onSymbol(); }
     setSide(plan.side);
     $("#tStop").value = plan.stop; $("#tTargets").value = plan.targets.join(", ");
@@ -276,7 +310,7 @@ const Paper = (() => {
   }
 
   // ---- wiring ----
-  $("#paperBtn").onclick = () => { closeDrawers(); setView("paper"); };
+  $("#paperBtn").onclick = () => { closeDrawers(); go("paper"); };
   document.querySelectorAll(".side-toggle .side").forEach(b => b.onclick = () => setSide(b.dataset.side));
   document.querySelectorAll("#tOrd .seg-btn").forEach(b => b.onclick = () => setOrd(b.dataset.v));
   document.querySelectorAll("#tSizeMode .seg-btn").forEach(b => b.onclick = () => setSizeMode(b.dataset.v));
@@ -288,11 +322,14 @@ const Paper = (() => {
   $("#planBtn").onclick = () => { if (Paper.plan) prefill(Paper.plan); };
   document.addEventListener("keydown", e => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "p" || e.key === "P")) setView("paper");
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "p" || e.key === "P")) go("paper");
   });
   document.addEventListener("visibilitychange", () => { if (visible()){ refresh(); quote(); } });
   setInterval(() => { if (updatedAt && visible() && !$("#pLive").classList.contains("off"))
     $("#pUpdated").textContent = `live · updated ${Math.round((Date.now() - updatedAt) / 1000)}s ago`; }, 1000);
   init();
-  return { setView, prefill, plan: null };
+  $("#pXp").onclick = () => go("home");
+  return { setView, prefill, openSymbol, noteProgress, plan: null };
 })();
+// A top-level const is not a window property; app.js looks the desk up as window.Paper.
+window.Paper = Paper;
