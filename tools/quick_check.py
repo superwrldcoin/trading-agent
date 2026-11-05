@@ -33,6 +33,11 @@ from tools import position_calc as pc  # noqa: E402
 ALIASES = [  # longest / most specific first
     (r"bitcoin\s*cash|\bbch\b", "BCH/USDT"),
     (r"\bbitcoin\b|\bbtc\b|\bxbt\b", "BTC/USDT"),
+    (r"\beth(?:ereum)?\b|\bether\b", "ETH/USDT"),
+    (r"\bsol(?:ana)?\b", "SOL/USDT"),
+    (r"\bmnq\b|\bnq\b|\bnasdaq\b|\bnas\s*100\b|\bndx\b", "MNQ"),
+    (r"\bmes\b|\bes\b|\bs\s*&\s*p(?:\s*500)?\b|\bspx\b|\bsp\s*500\b", "MES"),
+    (r"\bmgc\b|\bgc\b|\bgold\s*futures?\b|\bmicro\s*gold\b", "MGC"),     # before plain "gold" (spot)
     (r"\bxau\s*/?\s*usd\b|\bxau\b|\bgold\b|\bspot\s*gold\b", "XAU/USD"),
     (r"\bgld\b", "GLD"),
     (r"\bslv\b", "SLV"),
@@ -293,9 +298,14 @@ def analyze(req: dict, frames: dict, errors: dict, now: pd.Timestamp, mmr: float
         grade = {"A": "B", "B": "C", "C": "C"}[grade]
 
     if targets:
+        spec = pc.contract_spec(symbol) or {}
         res = pc.compute(pc.Plan(asset=symbol, side=side, entry=entry, stop=stop, targets=[t for t, _ in targets],
                                  leverage=leverage, mmr=mmr, fee=fee, equity=req["equity"], risk_pct=req["risk_pct"]
-                                 if req["equity"] else None, atr=atr14))
+                                 if req["equity"] else None, atr=atr14,
+                                 contract_size=spec.get("multiplier"), contract_name=spec.get("name")))
+        for n in res["notes"]:
+            if n.startswith("FAIL: the risk budget") or n.startswith("sizing rounds down"):
+                flags.append(("fail" if n.startswith("FAIL") else "info", n.removeprefix("FAIL: ")))
         out["position"] = res
         if res["weighted_R"] < 2:
             flags.append(("warn", f"weighted R {res['weighted_R']:.2f} is below the 2.0 minimum"))
@@ -404,6 +414,11 @@ def render(a: dict) -> str:
             lines.append(f"\nWeighted R {pos['weighted_R']:.2f} | stop width {a['stop_width_atr']:.2f} ATR | "
                          f"max leverage for 1 ATR liq buffer {_f(a['max_leverage_1atr'], 1)}x | "
                          f"units {_f(pos['units'], 4)}, margin {_f(pos['margin'])} [CALC]")
+            c = pos.get("contracts")
+            if c:
+                lines.append(f"Contracts: " + (f"{c['whole']} {c['name']} (exact {c['exact']:.2f})" if c["sized"]
+                             else f"size [MISSING] (give equity and risk %)")
+                             + f"; 1 {c['name']} = {c['size']:g} units, risks {_f(c['risk_per_contract'])} to the stop [CALC]")
         elif a.get("max_leverage_1atr") is not None:
             lines.append(f"\nStop width {a['stop_width_atr']:.2f} ATR | max leverage for 1 ATR liq buffer "
                          f"{_f(a['max_leverage_1atr'], 1)}x [CALC]")

@@ -4,7 +4,8 @@
   python tools/crypto_feeds.py BCH/USDT --json
 
 Sources (public, keyless): OKX USDT-perpetual funding rate (+ 7-day history), open interest snapshot (history when
-OKX returns non-zero values), long/short account ratio; CoinGecko global BTC dominance.
+OKX returns non-zero values), long/short account ratio, perp-vs-spot basis with mark price and contract size (perp_basis); CoinGecko global
+BTC dominance.
 These describe positioning and crowding. They never change the conviction grade; mention extremes in Notes.
 """
 from __future__ import annotations
@@ -85,6 +86,24 @@ def long_short(ccy: str) -> dict:
             "as_of": pd.Timestamp(int(rows[0][0]), unit="ms", tz="UTC").isoformat()}
 
 
+BASIS_WARN_PCT = 0.15   # perp vs spot gap worth flagging: levels come from spot, fills and liquidation from the perp
+
+
+def perp_basis(ccy: str) -> dict:
+    """Perp vs spot: levels are computed on the spot pair, but the user trades the perp and OKX liquidates on mark."""
+    from tools import data
+    swap, spot_inst = f"{ccy}-USDT-SWAP", f"{ccy}-USDT"
+    perp_last, spot_last = data.fetch_okx_last(swap), data.fetch_okx_last(spot_inst)
+    mark = data.fetch_okx_mark(swap)
+    spec = data.fetch_okx_swap_spec(swap)
+    basis = (perp_last / spot_last - 1) * 100
+    reading = (f"perp {'above' if basis > 0 else 'below'} spot by more than {BASIS_WARN_PCT}%: shift spot levels by the "
+               "basis before placing perp orders" if abs(basis) > BASIS_WARN_PCT else "perp tracks spot: spot levels apply")
+    return {"inst": swap, "perp_last": perp_last, "spot_last": spot_last, "mark": mark, "basis_pct": basis,
+            "mark_vs_last_pct": (mark / perp_last - 1) * 100, "ct_val": spec["ct_val"], "ct_val_ccy": spec["ct_val_ccy"],
+            "min_sz": spec["min_sz"], "max_lever": spec["max_lever"], "reading": reading}
+
+
 def btc_dominance() -> dict:
     d = _get(COINGECKO_GLOBAL)["data"]
     return {"btc_dominance_pct": float(d["market_cap_percentage"]["btc"]),
@@ -92,7 +111,7 @@ def btc_dominance() -> dict:
 
 
 FEEDS = {"funding_rate": funding, "open_interest": open_interest, "long_short_ratio": long_short,
-         "btc_dominance": lambda ccy: btc_dominance()}
+         "btc_dominance": lambda ccy: btc_dominance(), "perp_basis": perp_basis}
 
 
 def run(core_id: str) -> dict:
@@ -128,6 +147,12 @@ def render(r: dict) -> str:
         x = f["btc_dominance"]
         lines.append(f"- BTC dominance: " + (x["error"] if "error" in x else
                      f"{x['btc_dominance_pct']:.1f}% (total crypto market cap 24h {x['mcap_change_24h_pct']:+.2f}%)"))
+    if "perp_basis" in f:
+        x = f["perp_basis"]
+        lines.append(f"- Perp vs spot ({x.get('inst', '')}): " + (x["error"] if "error" in x else
+                     f"perp {x['perp_last']:,.2f} vs spot {x['spot_last']:,.2f} ({x['basis_pct']:+.3f}%), mark "
+                     f"{x['mark']:,.2f} ({x['mark_vs_last_pct']:+.3f}% vs last); 1 contract = {x['ct_val']:g} "
+                     f"{x['ct_val_ccy']} (min {x['min_sz']:g}): {x['reading']}"))
     lines.append("Positioning context only: it never changes the grade. Extremes go in Notes and the bear case.")
     return "\n".join(lines) + "\n"
 

@@ -21,6 +21,15 @@ NOW = pd.Timestamp("2026-10-04 20:00", tz="UTC")
     ("BTC long 98.4k 25x", dict(symbol="BTC/USDT", side="long", entry=98400, leverage=25)),
     ("how does GLD look?", dict(symbol="GLD", side=None, entry=None, leverage=None)),
     ("BTC long 20x targets 100,000, 105,000", dict(targets=[100000, 105000], entry=None)),
+    ("ETH perp short 5x @ 3,450", dict(symbol="ETH/USDT", side="short", leverage=5, entry=3450)),
+    ("solana long", dict(symbol="SOL/USDT", side="long")),
+    ("MNQ long entry 25,100 stop 24,950", dict(symbol="MNQ", entry=25100, stop=24950)),
+    ("nasdaq short", dict(symbol="MNQ", side="short")),
+    ("S&P long", dict(symbol="MES", side="long")),
+    ("mes short 2x", dict(symbol="MES", leverage=2)),
+    ("gold futures long", dict(symbol="MGC", side="long")),
+    ("MGC long @ 4180", dict(symbol="MGC", entry=4180)),
+    ("gold long", dict(symbol="XAU/USD")),                                  # plain "gold" stays spot
 ])
 def test_parse_request(text, expect):
     req = qc.parse_request(text)

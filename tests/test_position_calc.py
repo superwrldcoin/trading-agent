@@ -101,6 +101,27 @@ def test_flags_wide_stop_and_low_rr():
     assert "wide stop" in notes and "T1 only" in notes and "weighted R 0.27" in notes
 
 
+def test_futures_contracts_round_down_and_flag_too_small():
+    # MNQ: $2 per point. 10k at 1% = $100 budget; 40-point stop -> 80 + fees per contract -> 1 contract
+    r = pc.compute(pc.Plan(asset="MNQ", side="long", entry=25000, stop=24960, targets=[25120, 25200],
+                           fee=0.0, equity=10000, risk_pct=1, contract_size=2, contract_name="MNQ"))
+    c = r["contracts"]
+    assert c["exact"] == pytest.approx(1.25) and c["whole"] == 1 and c["risk_per_contract"] == pytest.approx(80)
+    assert any("rounds down to 1 MNQ" in n for n in r["notes"])
+    # MGC: 10 oz. $50 budget, $20 stop -> $200 per contract -> FAIL
+    r2 = pc.compute(pc.Plan(asset="MGC", side="short", entry=4200, stop=4220, targets=[4140], fee=0.0,
+                            equity=5000, risk_pct=1, contract_size=10, contract_name="MGC"))
+    assert r2["contracts"]["whole"] == 0 and any(n.startswith("FAIL: the risk budget") for n in r2["notes"])
+    assert pc.compute(bch_plan())["contracts"] is None
+
+
+def test_cli_picks_contract_spec_from_universe(capsys):
+    assert pc.main(["--asset", "MES", "--side", "long", "--entry", "6800", "--stop", "6780", "--targets", "6860",
+                    "--fee", "0", "--equity", "10000", "--risk-pct", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "| Contracts (MES, 5 units each) | 1 (exact 1.00)" in out
+
+
 def test_cli_json_and_table(capsys):
     args = ["--asset", "BCH/USDT", "--side", "long", "--entry", "309.80", "--stop", "293.64",
             "--targets", "322.60", "366.10", "--leverage", "10", "--equity", "10000", "--risk-pct", "1"]
