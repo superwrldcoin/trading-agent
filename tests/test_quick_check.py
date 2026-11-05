@@ -30,6 +30,11 @@ NOW = pd.Timestamp("2026-10-04 20:00", tz="UTC")
     ("gold futures long", dict(symbol="MGC", side="long")),
     ("MGC long @ 4180", dict(symbol="MGC", entry=4180)),
     ("gold long", dict(symbol="XAU/USD")),                                  # plain "gold" stays spot
+    ("XRP long 3x entry 2.15 stop 2.05", dict(symbol="XRP/USDT", leverage=3, entry=2.15, stop=2.05)),
+    ("ripple short", dict(symbol="XRP/USDT", side="short")),
+    ("crude oil short @ 61.40", dict(symbol="MCL", side="short", entry=61.40)),
+    ("MCL long", dict(symbol="MCL", side="long")),
+    ("wti long", dict(symbol="MCL")),
 ])
 def test_parse_request(text, expect):
     req = qc.parse_request(text)

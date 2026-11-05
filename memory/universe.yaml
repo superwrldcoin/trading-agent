@@ -34,7 +34,7 @@ meta:
   futures_roll_caveat: true        # =F symbols are continuous contracts; flag roll gaps
 
 # ---------------------------------------------------------------------------
-# CORE (12 entries: the original 7 + ETH/USDT, SOL/USDT, MNQ, MES, MGC added 2026-11-05)
+# CORE (14 entries: the original 7 + ETH/USDT, SOL/USDT, MNQ, MES, MGC, XRP/USDT, MCL added 2026-11-05)
 # contract: futures contract spec (micros); position_calc reports whole contracts from it.
 # perp:     the OKX perpetual the user actually trades; levels still come from `feed` (spot),
 #           crypto_feeds.py perp_basis reports the perp-vs-spot gap and the mark price.
@@ -231,6 +231,40 @@ core:
     last_verified: 2026-11-05
     verify_note: "yfinance 332 daily bars, last 2026-11-05 = 4,146.10; 1h OK (73 bars); continuous contract: 6 daily moves > 4% in the window (check for roll gaps before using levels across them); MGC = 10 x troy oz"
 
+  # --- Tier 2 additions (2026-11-05): XRP perp on OKX; CME micro crude MCL ---
+  - symbol: "XRP-USD"
+    id: "XRP/USDT"
+    name: XRP
+    asset_class: crypto
+    session: crypto
+    source: exchange_public
+    feed: {venue: okx, instrument: "XRP-USDT"}
+    perp: {venue: okx, instrument: "XRP-USDT-SWAP"}
+    backup: {source: yfinance, symbol: "XRP-USD"}
+    refresh_minutes: 5
+    pairs_with: ["BTC-USD", "ETH-USD"]
+    drivers: ["DX-Y.NYB", "^VIX", "QQQ"]
+    extra_feeds: [funding_rate, open_interest, long_short_ratio, btc_dominance, perp_basis]
+    notes: "Very liquid, but headline-driven (SEC/court rulings, ETF and partnership news): structure-based levels break more often than on BTC/ETH. Check news before any setup."
+    verified: true
+    last_verified: 2026-11-05
+    verify_note: "OKX XRP-USDT last 1.31 at 11-05 05:00Z; perp XRP-USDT-SWAP last 1.31, 1 contract = 100 XRP; backup XRP-USD OK (1.31)"
+
+  - symbol: "CL=F"
+    id: "MCL"
+    name: Micro WTI crude oil futures (priced from CL=F)
+    asset_class: energy
+    session: cme
+    source: yfinance
+    contract: {name: "MCL", multiplier: 100, unit: "barrel", full_size: "CL", full_multiplier: 1000}
+    refresh_minutes: 5
+    pairs_with: ["BZ=F"]
+    drivers: ["DX-Y.NYB", "^VIX", "^TNX"]
+    notes: "NYMEX, same 18:00 ET session as CME. MONTHLY roll (continuous CL=F jumps at each roll; check before using levels across it). Event risk: EIA inventories Wed 10:30 ET, API Tue evening, OPEC+ meetings and headlines. Can trade negative in extremes (April 2020)."
+    verified: true
+    last_verified: 2026-11-05
+    verify_note: "yfinance 332 daily bars, last 2026-11-05 = 86.93; 1h OK (72 bars); continuous contract: 51 daily moves > 4% in the window (check for roll gaps before using levels across them); MCL = 100 x barrel"
+
 # ---------------------------------------------------------------------------
 # DRIVERS (5): explain why your positions move
 # ---------------------------------------------------------------------------
@@ -289,7 +323,7 @@ drivers:
     verify_note: "FRED 5942 obs, last 2026-10-01 = 2.88"
 
 # ---------------------------------------------------------------------------
-# PAIRS (6): confirm or contradict a core move
+# PAIRS (7): confirm or contradict a core move
 # (ETH-USD and GC=F were promoted to core on 2026-11-05; pairs_with / context still refer to them by symbol)
 # ---------------------------------------------------------------------------
 pairs:
@@ -353,6 +387,16 @@ pairs:
     last_verified: 2026-10-04
     verify_note: "yfinance 400 daily bars, last 2026-10-02 = 199.81; 1h OK (35 bars)"
 
+  - symbol: "BZ=F"
+    name: Brent crude futures
+    source: yfinance
+    refresh_minutes: 15
+    pairs_with: ["CL=F"]
+    purpose: "Global benchmark: is a WTI move global (Brent confirms) or US-specific (inventories, Cushing)? Feeds the Brent/WTI ratio"
+    verified: true
+    last_verified: 2026-11-05
+    verify_note: "yfinance 332 daily bars, last 2026-11-05 = 93.85; 1h OK (72 bars); continuous contract: 50 daily moves > 4% in the window (check for roll gaps before using levels across them)"
+
 # ---------------------------------------------------------------------------
 # COMPUTED RATIOS (calculated in code by tools/ratios.py, never by the model)
 # trend_ref: compare the ratio to its own moving average to label direction
@@ -402,6 +446,19 @@ ratios:
     trend_ref: sma_50d
     reading: "Rising = tech/growth leading the broad market; falling = defensive rotation or tech-led selling"
 
+  # --- added 2026-11-05 with the Tier 2 instruments ---
+  - name: xrp_btc
+    formula: "XRP-USD / BTC-USD"
+    relevant_to: ["XRP-USD"]
+    trend_ref: sma_50d
+    reading: "Rising = XRP outperforming BTC (often news-driven); falling = XRP lagging the crypto market"
+
+  - name: brent_wti
+    formula: "BZ=F / CL=F"
+    relevant_to: ["CL=F"]
+    trend_ref: sma_50d
+    reading: "Rising = Brent premium widening (global tightness or US oversupply); falling = WTI strengthening (US draws, Cushing tight)"
+
 # ---------------------------------------------------------------------------
 # CONTEXT MAP (filled in by the agent from the entries above; the pasted file was cut off here)
 # What to pull alongside each core instrument. feeds = extra_feeds from tools/crypto_feeds.py
@@ -419,3 +476,5 @@ context:
   MNQ:      {pairs: ["QQQ", "ES=F", "NVDA"], drivers: ["^TNX", "^VIX", "DX-Y.NYB"], ratios: ["nq_es"], feeds: []}
   MES:      {pairs: ["NQ=F", "QQQ"], drivers: ["^TNX", "^VIX", "DX-Y.NYB"], ratios: ["nq_es"], feeds: []}
   MGC:      {pairs: ["GLD", "SI=F"], drivers: ["DX-Y.NYB", "DFII10", "^TNX"], ratios: ["gold_silver_ratio", "gdx_gld"], feeds: []}
+  XRP/USDT: {pairs: ["BTC-USD", "ETH-USD"], drivers: ["DX-Y.NYB", "^VIX", "QQQ"], ratios: ["xrp_btc"], feeds: [funding_rate, open_interest, long_short_ratio, btc_dominance, perp_basis]}
+  MCL:      {pairs: ["BZ=F"], drivers: ["DX-Y.NYB", "^VIX", "^TNX"], ratios: ["brent_wti"], feeds: []}

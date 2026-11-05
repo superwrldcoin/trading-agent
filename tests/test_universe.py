@@ -9,8 +9,8 @@ def test_repo_universe_structure():
     u = universe.load()
     ids = [c["id"] for c in u["core"]]
     assert ids == ["BTC/USDT", "BCH/USDT", "XAU/USD", "SI", "SLV", "GLD", "MSFT",
-                   "ETH/USDT", "SOL/USDT", "MNQ", "MES", "MGC"]
-    assert len(u["drivers"]) == 5 and len(u["pairs"]) == 6 and len(u["ratios"]) == 7
+                   "ETH/USDT", "SOL/USDT", "MNQ", "MES", "MGC", "XRP/USDT", "MCL"]
+    assert len(u["drivers"]) == 5 and len(u["pairs"]) == 7 and len(u["ratios"]) == 9
     symbols = [e["symbol"] for _, e in universe.entries()]
     assert len(symbols) == len(set(symbols))                                 # promoted pairs aren't listed twice
     for r in u["ratios"]:                                                    # every ratio leg resolves to an entry
@@ -41,9 +41,11 @@ def test_themes_and_lookup_helpers():
 def test_tier1_futures_and_perps():
     assert universe.themes()["MNQ"] == universe.themes()["MES"] == "equity index futures"
     assert universe.themes()["MGC"] == "precious metals" and universe.themes()["SOL/USDT"] == "crypto"
-    assert {k: universe.contract(k)["multiplier"] for k in ("MNQ", "MES", "MGC")} == {"MNQ": 2, "MES": 5, "MGC": 10}
+    assert {k: universe.contract(k)["multiplier"] for k in ("MNQ", "MES", "MGC", "MCL")} == {
+        "MNQ": 2, "MES": 5, "MGC": 10, "MCL": 100}
+    assert universe.themes()["MCL"] == "energy" and universe.themes()["XRP/USDT"] == "crypto"
     assert universe.contract("BTC/USDT") is None and universe.perp("MNQ") is None
-    for cid in ("BTC/USDT", "BCH/USDT", "ETH/USDT", "SOL/USDT"):
+    for cid in ("BTC/USDT", "BCH/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"):
         assert universe.perp(cid) == universe.core_by_id()[cid]["feed"]["instrument"] + "-SWAP"
     assert levels.WATCHLIST["MNQ"].session is levels.CME and levels.WATCHLIST["MNQ"].instrument == "NQ=F"
     assert levels.WATCHLIST["SOL/USDT"].backup.instrument == "SOL-USD"

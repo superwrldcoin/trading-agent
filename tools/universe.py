@@ -19,7 +19,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 UNIVERSE_PATH = ROOT / "memory" / "universe.yaml"
 THEME_BY_CLASS = {"crypto": "crypto", "metals": "precious metals", "equity": "equities",
-                  "equity_index": "equity index futures"}
+                  "equity_index": "equity index futures", "energy": "energy"}
 LEVEL_DRIVERS = {"^TNX", "^VIX", "DFII10"}  # rates / vol indexes: correlate by change in level, not % change
 
 

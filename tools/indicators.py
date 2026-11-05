@@ -365,7 +365,8 @@ def summarize(df: pd.DataFrame, session: levels.Session) -> dict:
 
 
 def _f(x, nd=2) -> str:
-    return "n/a" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x:,.{nd}f}"
+    from tools import fmt
+    return fmt.num(float(x) if x is not None else None, nd)
 
 
 def render(symbol: str, src: levels.Source, df: pd.DataFrame, s: dict) -> str:
@@ -375,7 +376,7 @@ def render(symbol: str, src: levels.Source, df: pd.DataFrame, s: dict) -> str:
     if s["bars_daily"] < SETTLE_DAILY:
         warm.append(f"daily EMA20 approximate ({s['bars_daily']} days < {SETTLE_DAILY})")
     st = s["structure"]
-    swing_fmt = lambda ser: ", ".join(f"{v:,.2f} ({t:%m-%d %H:%M})" for t, v in ser.items()) or "none"
+    swing_fmt = lambda ser: ", ".join(f"{_f(v)} ({t:%m-%d %H:%M})" for t, v in ser.items()) or "none"
     lines = [
         f"## {symbol}",
         f"Data: {src.label}, 4H, {df.index[0]:%Y-%m-%d %H:%M} -> {df.index[-1]:%Y-%m-%d %H:%M} UTC "

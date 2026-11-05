@@ -180,7 +180,8 @@ def load_4h(src: Source, now: pd.Timestamp, start: pd.Timestamp | None = None, u
 
 
 def _fmt(x: float | None) -> str:
-    return "n/a" if x is None else f"{x:,.2f}"
+    from tools import fmt
+    return fmt.num(x)
 
 
 LEVEL_ROWS = [("PDH", "day"), ("PDL", "day"), ("PWH", "week"), ("PWL", "week"), ("PMthH", "month"), ("PMthL", "month")]

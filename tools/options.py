@@ -40,6 +40,8 @@ UNDERLYING = {  # watchlist symbol -> (provider, ticker, multiplier, note)
     "MNQ": ("yfinance", "QQQ", 100, "CME Nasdaq futures options aren't available keyless: QQQ options used as the proxy (QQQ ~ NDX / 40)"),
     "MES": ("yfinance", "SPY", 100, "CME S&P futures options aren't available keyless: SPY options used as the proxy (SPY ~ SPX / 10)"),
     "MGC": ("yfinance", "GLD", 100, "COMEX gold options aren't available keyless: GLD options used as the proxy"),
+    "MCL": ("yfinance", "USO", 100, "NYMEX crude options aren't available keyless: USO options used as a rough proxy "
+                                    "(USO holds rolled futures and drifts from spot WTI over time: compare in % moves, not price)"),
 }
 DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency"
 TIMEOUT = 15
@@ -118,7 +120,7 @@ def years_to(expiry: str, now: pd.Timestamp) -> float:
 
 def load_chain(symbol: str, expiry: str | None, dte: int | None, now: pd.Timestamp) -> dict:
     if symbol not in UNDERLYING:
-        raise OptionsError(f"no options source for {symbol} (BCH has no listed options; no keyless SOL source). Supported: {', '.join(UNDERLYING)}")
+        raise OptionsError(f"no options source for {symbol} (BCH has no listed options; no keyless SOL or XRP source). Supported: {', '.join(UNDERLYING)}")
     prov, ticker, mult, note = UNDERLYING[symbol]
     try:
         df, spot, exp = (fetch_deribit_chain(expiry, dte, now, ticker) if prov == "deribit"

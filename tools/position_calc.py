@@ -19,6 +19,11 @@ import json
 import sys
 from dataclasses import dataclass, field
 
+try:
+    from tools.fmt import num as fmt_num
+except ImportError:  # run as a script from tools/
+    from fmt import num as fmt_num
+
 TRANCHE_WEIGHTS = (0.30, 0.30, 0.40)  # first touch -> best price; largest piece at the best price
 DEFAULT_TARGET_WEIGHTS = {1: [1.0], 2: [0.5, 0.5], 3: [0.4, 0.4, 0.2]}
 
@@ -180,7 +185,7 @@ def compute(p: Plan) -> dict:
 
 
 def render(res: dict) -> str:
-    f = lambda x, nd=2: "n/a" if x is None else f"{x:,.{nd}f}"
+    f = fmt_num
     lines = [f"Position: {res['asset']} {res['side']}, {f(res['leverage'], 1)}x isolated", "",
              "| Item | Value |", "|---|---|",
              f"| Entry (blended) | {f(res['entry'])} |"]
