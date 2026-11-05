@@ -51,6 +51,14 @@ gets a **Paper this setup** button that fills the ticket; you still open it your
 Simulated only: no real orders, exchange keys or wallets. Data lives in `memory/paper.json` (private, gitignored).
 CLI: `python tools/paper.py status | open .. | close PT-001 | cancel PT-002 | reset --equity 10000 | stats`.
 
+**Home** (`#home`) is the start screen: Play, live markets, your level / XP / streak / badges, house rules, and the
+**daily challenge**: one symbol per UTC day (crypto only on weekends). Paper a rule-clean ticket on it with a
+P(T1) call and weighted R at or above your minimum for +40 XP, plus 20 more if it reaches T1 before the stop. Once a day.
+XP rewards discipline (planned, rule-clean, journaled trades) more than P&L, and P&L XP is capped per day.
+
+UI smoke test (no npm packages; needs Node 22+ and Chrome or Edge): start the app with
+`TA_PAPER_PATH=tools/output/paper-smoke.json`, then `node tests/e2e/ui_smoke.mjs --base http://127.0.0.1:8765`.
+
 ## Everyday commands
 
 ```powershell

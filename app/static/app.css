@@ -660,5 +660,48 @@ button.xp-chip::before { display:none; }
 .xp-pop { position:fixed; left:50%; top:38%; z-index:60; transform:translate(-50%, 0); font:800 44px/1 system-ui; letter-spacing:-1px; pointer-events:none;
           text-shadow:0 6px 30px rgba(0,0,0,.4); animation:xpPop 1.6s var(--ease) forwards; }
 .xp-pop.up { color:var(--brand-2); } .xp-pop.down { color:var(--bad); }
+
+/* ---------- home: section strip, daily challenge quest, arcade effects ---------- */
+.h-jump { display:flex; gap:8px; flex-wrap:wrap; }
+.h-jump a { font-size:12.5px; font-weight:600; letter-spacing:.3px; color:var(--text-2); text-decoration:none; padding:6px 12px; border-radius:99px;
+            background:var(--head); border:1px solid var(--line); transition:all .2s var(--ease); }
+.h-jump a:hover { color:var(--text); border-color:var(--accent); transform:translateY(-1px); }
+.h-jump a:first-child { color:#1b1300; background:var(--warn); border-color:transparent; }
+.sec-title small { text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
+button.play.sm { font-size:15px; padding:11px 22px; }
+.quest { position:relative; overflow:hidden; display:grid; grid-template-columns:1fr auto; gap:18px; padding:22px 24px; border-radius:var(--radius);
+         background:linear-gradient(120deg, color-mix(in srgb, var(--warn) 16%, var(--panel)), color-mix(in srgb, var(--brand-3) 10%, var(--panel)));
+         border:1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); box-shadow:0 18px 50px -24px color-mix(in srgb, var(--warn) 70%, transparent);
+         animation:rise .55s var(--ease) both; }
+.quest::before { content:""; position:absolute; inset:-40% -10% auto auto; width:260px; height:260px; border-radius:50%;
+                 background:radial-gradient(circle, color-mix(in srgb, var(--warn) 35%, transparent), transparent 70%); pointer-events:none; animation:glowFade 4s ease-in-out infinite; }
+@keyframes glowFade { 50% { opacity:.45; } }
+.quest.done { border-color:color-mix(in srgb, var(--good) 55%, var(--line));
+              background:linear-gradient(120deg, color-mix(in srgb, var(--good) 14%, var(--panel)), color-mix(in srgb, var(--brand-2) 10%, var(--panel))); }
+.q-kicker { font-size:11.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--warn); }
+.quest.done .q-kicker { color:var(--good); }
+.quest h3 { font-size:clamp(20px, 2.6vw, 26px); font-weight:800; letter-spacing:-.4px; margin:6px 0 12px; }
+.q-sym { display:inline-block; padding:0 10px; border-radius:9px; background:var(--panel-solid); border:1px solid var(--line-2); box-shadow:0 6px 18px -10px rgba(0,0,0,.5); }
+.q-goals { list-style:none; padding:0; margin:0 0 14px; display:flex; flex-wrap:wrap; gap:8px 16px; font-size:13.5px; color:var(--text-2); }
+.q-goals li { display:flex; align-items:center; gap:7px; }
+.q-goals i { width:18px; height:18px; border-radius:50%; display:grid; place-items:center; font-style:normal; font-size:11px; font-weight:800;
+             border:2px solid var(--line-2); color:#fff; transition:all .3s var(--ease); }
+.q-goals li.ok { color:var(--text); } .q-goals li.ok i { background:var(--good); border-color:var(--good); animation:pop .4s var(--ease) both; }
+.q-cta { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.q-reward { font-size:13px; color:var(--text-2); } .q-reward b { color:var(--warn); font-size:15px; }
+.quest.done .q-reward b { color:var(--good); }
+.q-won { font-weight:700; color:var(--good); }
+.q-side { display:flex; flex-direction:column; align-items:flex-end; justify-content:space-between; gap:10px; min-width:150px; position:relative; }
+.q-timer { text-align:right; } .q-timer small { display:block; font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--muted); }
+.q-timer b { font:800 30px/1.1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing:1px; font-variant-numeric:tabular-nums; }
+.q-tries { color:var(--muted); font-size:12px; }
+.q-badge { font-size:44px; line-height:1; filter:drop-shadow(0 8px 16px rgba(0,0,0,.35)); animation:bob 2.6s ease-in-out infinite; }
+@media (max-width: 700px){ .quest { grid-template-columns:1fr; } .q-side { align-items:flex-start; flex-direction:row; flex-wrap:wrap; } .q-timer { text-align:left; } }
+.pulse { animation:pulseRing 1s var(--ease); }
+@keyframes pulseRing { 0% { box-shadow:0 0 0 0 rgba(250,178,25,.6); } 100% { box-shadow:0 0 0 20px rgba(250,178,25,0); } }
+.ch-banner { margin:-2px 0 12px; padding:9px 12px; border-radius:11px; font-size:12.5px; color:var(--text);
+             background:color-mix(in srgb, var(--warn) 16%, transparent); border:1px solid color-mix(in srgb, var(--warn) 50%, transparent); animation:rise .4s var(--ease) both; }
+.ch-banner b { color:var(--warn); } .ch-banner.done { background:color-mix(in srgb, var(--good) 14%, transparent); border-color:color-mix(in srgb, var(--good) 45%, transparent); }
+.fx-canvas { position:fixed; inset:0; width:100vw; height:100vh; z-index:70; pointer-events:none; }
 @keyframes xpPop { 0% { opacity:0; transform:translate(-50%, 20px) scale(.6); } 20% { opacity:1; transform:translate(-50%, 0) scale(1.1); }
                    70% { opacity:1; transform:translate(-50%, -30px) scale(1); } 100% { opacity:0; transform:translate(-50%, -70px) scale(.95); } }

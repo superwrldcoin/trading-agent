@@ -52,6 +52,14 @@
       </div>
     </div>
 
+    <nav class="h-jump" aria-label="Home sections">
+      <a href="#hDaily" data-jump>★ Daily challenge</a><a href="#hMarkets" data-jump>Markets</a>
+      <a href="#hHow" data-jump>How to play</a><a href="#hModes" data-jump>Modes</a>
+    </nav>
+
+    <section class="quest-wrap" id="hDaily" aria-label="Daily challenge"></section>
+
+    <h3 class="sec-title" id="hMarkets">Markets <small>tap one to open it on the desk</small></h3>
     <div class="h-ticker" id="hTicker" aria-label="Watchlist prices"></div>
 
     <div class="home-grid">
@@ -59,19 +67,19 @@
       <section class="panel rules-card" id="hRules" aria-label="Your rules"></section>
     </div>
 
-    <h3 class="sec-title">How it works</h3>
+    <h3 class="sec-title" id="hHow">How to play</h3>
     <ol class="steps-3">
       <li><b>Read</b><span>Levels (PDH/PDL, PWH/PWL, monthly) and the EMA + VWAP conviction grade, on 4H closes.</span></li>
       <li><b>Plan</b><span>Zone, structural stop and targets with R, liquidation and a check against your rules.</span></li>
       <li><b>Practice</b><span>Open it on the paper desk at live prices, call your P(T1), and see if your calls hold up.</span></li>
     </ol>
 
-    <h3 class="sec-title">Modes</h3>
+    <h3 class="sec-title" id="hModes">Modes</h3>
     <div class="modes">
       <button class="mode" data-mode="quick"><span class="m-ico">⚡</span><b>Quick check</b><span>One line in, a full plan out. No AI, free, seconds.</span><em>Free</em></button>
       <button class="mode" data-mode="agent"><span class="m-ico">✦</span><b>Full agent</b><span>Claude Code with every skill, the bear case and news.</span><em id="hAgentTag">Claude</em></button>
       <button class="mode" data-mode="paper"><span class="m-ico">▶</span><b>Paper desk</b><span>Simulated trades at live prices, journal and calibration.</span><em>Live</em></button>
-      <div class="mode locked" aria-disabled="true"><span class="m-ico">★</span><b>Daily challenge</b><span>One symbol a day. Find a setup worth 2R+ and paper it.</span><em>Next</em></div>
+      <button class="mode" data-mode="daily"><span class="m-ico">★</span><b>Daily challenge</b><span>One symbol a day. Find a rule-clean setup worth 2R+ and paper it.</span><em id="hDailyTag">Today</em></button>
     </div>
   </section>
 
@@ -128,6 +136,7 @@
     <div class="paper-grid">
       <section class="panel ticket" id="ticket">
         <div class="t-head"><h3>Ticket</h3><select id="tSym" aria-label="Symbol"></select></div>
+        <div class="ch-banner" id="tChallenge" hidden></div>
         <div class="quote" id="tQuote"><b id="tPx">—</b><small id="tChg"></small><small class="src" id="tSrc"></small></div>
         <div class="side-toggle" role="radiogroup" aria-label="Side">
           <button type="button" class="side long active" data-side="long" role="radio" aria-checked="true">▲ Long</button>
@@ -204,5 +213,6 @@
 <script src="/static/app.js"></script>
 <script src="/static/paper.js"></script>
 <script src="/static/home.js"></script>
+<script src="/static/fx.js"></script>
 </body>
 </html>

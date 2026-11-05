@@ -277,6 +277,7 @@ def plan_ticket(state: dict, req: dict, price: float) -> dict:
                "notes": [n for n in res["notes"] if "per 1 unit" not in n]}
     preview["rules"] = rules_for(state, trade, preview)
     # recorded on the trade so XP can tell rule-clean trades from rule breaks later
+    trade["weighted_R"] = res["weighted_R"]          # kept for the daily challenge (needs the planned R at open)
     trade["rules_checked"] = bool(preview["rules"])
     trade["rule_breaks"] = [r["rule"] for r in preview["rules"] if r["result"] == "BREAKS"]
     preview["xp"] = xp_preview(state, trade)
@@ -440,7 +441,74 @@ BADGES = [("first_fill", "First fill", "Open your first paper trade"),
           ("clean_10", "By the book", "10 rule-clean trades in a row"),
           ("journal_10", "Journaler", "Write a note on 10 trades"),
           ("streak_5", "Five-day streak", "5 days in a row with clean trades"),
-          ("calibrated", "Calibrated", "20+ P(T1) calls within 10 points of what happened")]
+          ("calibrated", "Calibrated", "20+ P(T1) calls within 10 points of what happened"),
+          ("challenge_5", "Regular", "Complete 5 daily challenges")]
+
+# Daily challenge: one watchlist symbol per UTC day, the same for everyone with this watchlist (hash of the date).
+# Weekends draw from 24/7 crypto only, since CME and stocks are closed. Complete it by paper-trading that symbol
+# with a rule-clean ticket, a P(T1) call and planned weighted R >= your min_weighted_r: +40 XP, at most once a day,
+# and +20 more if that trade reaches T1 before its stop. It rewards one good setup, not more trades.
+CHALLENGE_XP = {"done": 40, "t1": 20}
+CHALLENGE_CLASSES = {"crypto", "equity_index", "energy"}
+CHALLENGE_EXTRA = {"MGC"}
+
+
+def _min_r() -> float:
+    try:
+        from tools import rules_check
+        v = (rules_check.load_rules() or {}).get("min_weighted_r")
+        return float(v) if v is not None else 2.0
+    except Exception:
+        return 2.0
+
+
+def challenge_symbol(day: str) -> str | None:
+    """The day's symbol (UTC date 'YYYY-MM-DD'): crypto only on Sat/Sun, else crypto + index/energy/gold micros."""
+    import hashlib
+    weekend = pd.Timestamp(day).dayofweek >= 5
+    pool = sorted(c["id"] for c in universe.core() if c["id"] in levels.WATCHLIST and
+                  (c["asset_class"] == "crypto" or (not weekend and (c["asset_class"] in CHALLENGE_CLASSES
+                                                                      or c["id"] in CHALLENGE_EXTRA))))
+    if not pool:
+        return None
+    return pool[int(hashlib.sha256(day.encode()).hexdigest(), 16) % len(pool)]
+
+
+def _qualifies(t: dict, min_r: float) -> list[tuple[str, bool]]:
+    return [("Rule-clean ticket", bool(t.get("rules_checked")) and not t.get("rule_breaks")),
+            ("P(T1) called", t.get("p_t1") is not None),
+            (f"Weighted R >= {min_r:g}", (t.get("weighted_R") or 0) >= min_r - 1e-9)]
+
+
+def challenge_events(trades: list[dict], min_r: float) -> list[dict]:
+    """XP events for every day's challenge in the journal (first qualifying fill of the day's symbol)."""
+    events, done = [], set()
+    for t in sorted([t for t in trades if t.get("opened_at")], key=lambda t: t["opened_at"]):
+        d = _day(t["opened_at"])
+        if d in done or t.get("symbol") != challenge_symbol(d) or not all(ok for _, ok in _qualifies(t, min_r)):
+            continue
+        done.add(d)
+        events.append({"ts": t["opened_at"], "id": t["id"], "label": "Daily challenge", "xp": CHALLENGE_XP["done"], "day": d})
+        if t["status"] == "closed" and t.get("t1_before_stop"):
+            events.append({"ts": t["closed_at"], "id": t["id"], "label": "Challenge T1", "xp": CHALLENGE_XP["t1"], "day": d})
+    return events
+
+
+def challenge(state: dict, now: pd.Timestamp | None = None) -> dict:
+    """Today's challenge card: symbol, goal checklist (best attempt so far), status and time to the UTC reset."""
+    now = now or pd.Timestamp.now(tz="UTC")
+    day, min_r = now.strftime("%Y-%m-%d"), _min_r()
+    sym = challenge_symbol(day)
+    tries = [t for t in _all_trades(state) if t.get("opened_at") and _day(t["opened_at"]) == day and t.get("symbol") == sym]
+    ev = [e for e in challenge_events(tries, min_r) if e["day"] == day]
+    best = max(tries, key=lambda t: sum(ok for _, ok in _qualifies(t, min_r)), default=None)
+    goals = _qualifies(best, min_r) if best else _qualifies({}, min_r)
+    done_id = next((e["id"] for e in ev if e["label"] == "Daily challenge"), None)
+    reset = (now.normalize() + pd.Timedelta(days=1))
+    return {"date": day, "symbol": sym, "min_R": min_r, "reward": CHALLENGE_XP, "done": done_id is not None,
+            "trade_id": done_id, "t1": any(e["label"] == "Challenge T1" for e in ev), "attempts": len(tries),
+            "goals": [{"label": l, "ok": bool(best) and ok} for l, ok in goals],
+            "resets_at": reset.isoformat(), "weekend": pd.Timestamp(day).dayofweek >= 5}
 
 
 def level_for(xp: int) -> dict:
@@ -525,6 +593,8 @@ def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
             if xp > 0:
                 pnl_per_day[d] = pnl_per_day.get(d, 0) + xp
                 events.append({"ts": ts, "id": t["id"], "label": f"Won {t['R']:+.2f}R", "xp": xp})
+    ch_events = challenge_events(trades, _min_r())
+    events += [{k: v for k, v in e.items() if k != "day"} for e in ch_events]
     events.sort(key=lambda e: e["ts"])
     total = max(0, sum(e["xp"] for e in events))
 
@@ -552,7 +622,8 @@ def progress(state: dict, now: pd.Timestamp | None = None) -> dict:
     cal_ok = len(calls) >= 20 and all(abs(c["called"] - c["actual"]) <= 10 for c in calibration(calls) if c["n"] >= 5)
     earned = {"first_fill": bool(trades), "first_t1": any(t.get("t1_before_stop") for t in closed),
               "clean_10": best_clean >= 10, "journal_10": sum(1 for t in trades if len((t.get("note") or "").strip()) >= NOTE_MIN) >= 10,
-              "streak_5": best >= 5, "calibrated": cal_ok}
+              "streak_5": best >= 5, "calibrated": cal_ok,
+              "challenge_5": sum(1 for e in ch_events if e["label"] == "Daily challenge") >= 5}
     today = now.strftime("%Y-%m-%d")
     return {"xp": total, **level_for(total), "streak": streak, "best_streak": best,
             "today": {"fills": fills_per_day.get(today, 0), "fill_cap": cap,
@@ -582,7 +653,7 @@ def snapshot(state: dict, marks: dict, errors: dict | None = None) -> dict:
                         "open_risk": open_risk, "open_risk_pct": open_risk / bal * 100 if bal else None,
                         "return_pct": (bal + unreal) / state["account"]["start_equity"] * 100 - 100},
             "trades": rows[::-1], "marks": marks, "errors": errors or {}, "stats": stats(state),
-            "progress": progress(state), "broker": PaperBroker.name}
+            "progress": progress(state), "challenge": challenge(state), "broker": PaperBroker.name}
 
 
 # ---------- API used by the web server and the CLI ----------

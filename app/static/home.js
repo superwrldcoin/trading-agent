@@ -1,7 +1,7 @@
 "use strict";
 // Home: start screen with live tickers, modes, your paper progress and your rules.
 // Uses $, esc, go, settings, animOn from app.js and Paper from paper.js (both loaded first).
-// The player card is a preview: XP, levels and badges come from tools/paper.py in the next build.
+// XP, levels, badges and the daily challenge come from tools/paper.py (/api/paper).
 const Home = (() => {
   const TICKER_MAX = 8, REFRESH_MS = 30000;
   let cfg = null, timer = 0, loaded = false;
@@ -44,6 +44,7 @@ const Home = (() => {
     const box = $("#hPlayer");
     let s; try { s = await (await fetch("/api/paper")).json(); } catch(e){ s = { error: "server unreachable" }; }
     if (s.error){ box.innerHTML = `<h3>Your desk</h3><p class="muted small">Paper desk unavailable: ${esc(s.error)}</p>`; return; }
+    daily(s.challenge);
     const a = s.account, st = s.stats, pg = s.progress, open = s.trades.filter(t => t.status === "open" || t.status === "pending").length;
     if (window.Paper) Paper.noteProgress(pg);
     const td = pg.today, xpSign = x => (x > 0 ? "+" : "") + x;
@@ -66,6 +67,33 @@ const Home = (() => {
       `<button class="ghost sm" id="hDesk">${open ? "Manage open trades →" : "Open your first paper trade →"}</button>`;
     $("#hDesk").onclick = () => go("paper");
   }
+
+  // ---- daily challenge (computed in tools/paper.py: one symbol per UTC day, +40 XP once) ----
+  let resetsAt = 0;
+  function daily(ch){
+    const box = $("#hDaily");
+    if (!ch || !ch.symbol){ box.innerHTML = ""; return; }
+    resetsAt = Date.parse(ch.resets_at);
+    $("#hDailyTag").textContent = ch.done ? "Done ✓" : ch.symbol.replace("/USDT", "");
+    box.innerHTML = `<div class="quest ${ch.done ? "done" : ""}">` +
+      `<div class="q-main"><span class="q-kicker">★ Daily challenge · ${esc(ch.date)}${ch.weekend ? " · weekend: crypto only" : ""}</span>` +
+      `<h3>Paper a rule-clean <b>${n(ch.min_R, ch.min_R % 1 ? 1 : 0)}R+</b> setup on <span class="q-sym">${esc(ch.symbol)}</span></h3>` +
+      `<ul class="q-goals">${ch.goals.map(g => `<li class="${g.ok ? "ok" : ""}"><i>${g.ok ? "✓" : ""}</i>${esc(g.label)}</li>`).join("")}</ul>` +
+      `<div class="q-cta">${ch.done ? `<span class="q-won">Complete${ch.t1 ? " · T1 hit" : ""} · ${esc(ch.trade_id)}</span>`
+        : `<button class="play sm" id="qGo">Take the challenge →</button>`}` +
+      `<span class="q-reward"><b>+${ch.reward.done} XP</b>${ch.t1 ? "" : ` · +${ch.reward.t1} if T1 comes before the stop`}</span></div></div>` +
+      `<div class="q-side"><div class="q-timer"><small>Resets in</small><b id="qClock">${clock()}</b></div>` +
+      `<small class="q-tries">${ch.attempts ? `${ch.attempts} attempt${ch.attempts > 1 ? "s" : ""} today` : "No attempt yet today"}</small>` +
+      `<span class="q-badge" aria-hidden="true">${ch.done ? "🏆" : "★"}</span></div></div>`;
+    const goBtn = $("#qGo"); if (goBtn) goBtn.onclick = () => window.Paper && Paper.openSymbol(ch.symbol);
+    if (ch.done && window.FX) FX.once(`challenge:${ch.date}`, () => { FX.confetti(); toast(`Daily challenge complete! +${ch.reward.done} XP`); });
+  }
+  function clock(){
+    const s = Math.max(0, Math.floor((resetsAt - Date.now()) / 1000));
+    return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(x => String(x).padStart(2, "0")).join(":");
+  }
+  setInterval(() => { const c = $("#qClock"); if (c && $("main").dataset.view === "home"){ c.textContent = clock();
+    if (resetsAt && Date.now() > resetsAt){ resetsAt = 0; player(); } } }, 1000);
 
   async function rules(){
     const r = (await config()).rules, box = $("#hRules");
@@ -97,12 +125,17 @@ const Home = (() => {
   document.querySelectorAll(".mode[data-mode]").forEach(b => b.onclick = () => {
     const m = b.dataset.mode;
     if (m === "paper") return go("paper");
+    if (m === "daily") return jump("#hDaily");
     go("analyze");
     const btn = $(m === "agent" ? "#agent" : "#quick");
     btn.classList.remove("glow"); void btn.offsetWidth; btn.classList.add("glow");
     $("#q").focus();
   });
   $(".brand").onkeydown = e => { if (e.key === "Enter") go("home"); };
+  // section strip scrolls inside Home; it must not touch location.hash (that's the view router)
+  function jump(sel){ const el = $(sel); if (el){ el.scrollIntoView({ behavior: animOn() ? "smooth" : "auto", block: "start" });
+    el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); } }
+  document.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => { e.preventDefault(); jump(a.getAttribute("href")); });
   return { setView };
 })();
 window.Home = Home;

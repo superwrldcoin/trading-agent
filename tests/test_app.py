@@ -186,7 +186,7 @@ def test_run_portfolio_empty(monkeypatch, tmp_path):
 
 def test_static_and_config(srv):
     for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent"), ("/static/report.js", b"const Report"),
-                  ("/static/home.js", b"window.Home = Home")):
+                  ("/static/home.js", b"window.Home = Home"), ("/static/fx.js", b"window.FX = FX")):
         status, body = request(srv, "GET", p)
         assert status == 200 and ct in body
     assert request(srv, "GET", "/static/../server.py")[0] == 404

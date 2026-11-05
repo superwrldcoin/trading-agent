@@ -74,7 +74,7 @@ const Paper = (() => {
     document.querySelector('#tSizeMode [data-v="contracts"]').hidden = !c;
     if (!c && sizeMode === "contracts") setSizeMode("risk");
     if (clear){ $("#tStop").value = ""; $("#tTargets").value = ""; $("#tLimit").value = ""; }
-    lastPx = null; $("#tPx").textContent = "—"; $("#tChg").textContent = ""; levLabel(); quote(); previewSoon();
+    lastPx = null; $("#tPx").textContent = "—"; $("#tChg").textContent = ""; levLabel(); quote(); previewSoon(); banner();
   }
   function levLabel(){
     const v = Number($("#tLev").value), cap = levCap(), out = $("#tLevOut");
@@ -160,7 +160,21 @@ const Paper = (() => {
     if (s.error){ $("#pUpdated").textContent = s.error; $("#pLive").classList.add("off"); return; }
     lastSnap = s; updatedAt = Date.now(); $("#pLive").classList.toggle("off", Object.keys(s.errors).length > 0);
     $("#pUpdated").textContent = Object.keys(s.errors).length ? "feed error: " + Object.keys(s.errors).join(", ") : "live · updated just now";
-    tiles(s); positions(s); journal(s); noteProgress(s.progress);
+    tiles(s); positions(s); journal(s); noteProgress(s.progress); noteChallenge(s.challenge);
+  }
+  // ---- daily challenge: banner on the ticket when it's today's symbol; one celebration when it's done ----
+  let challenge = null;
+  function noteChallenge(ch){
+    challenge = ch || null; banner();
+    if (ch && ch.done && window.FX) FX.once(`challenge:${ch.date}`, () => { FX.confetti(); toast(`Daily challenge complete! +${ch.reward.done} XP`); });
+  }
+  function banner(){
+    const b = $("#tChallenge"), ch = challenge;
+    b.hidden = !ch || ch.symbol !== $("#tSym").value;
+    if (b.hidden) return;
+    b.className = "ch-banner" + (ch.done ? " done" : "");
+    b.innerHTML = ch.done ? `🏆 Today's challenge is done (${esc(ch.trade_id)}). ${ch.t1 ? "T1 hit too." : `+${ch.reward.t1} XP more if it reaches T1 first.`}`
+      : `★ Daily challenge symbol: a rule-clean ticket with a P(T1) call and ${ch.min_R}R+ earns <b>+${ch.reward.done} XP</b>.`;
   }
   // ---- XP: chip on the desk, "+N XP" pop and level-up toast when the journal earns something new ----
   function noteProgress(pg){
@@ -172,7 +186,7 @@ const Paper = (() => {
     if (!seen || seen.xp === pg.xp) return;               // first visit: nothing to celebrate
     const d = pg.xp - seen.xp, why = pg.recent.length ? pg.recent[0].label : "";
     pop(`${d > 0 ? "+" : ""}${d} XP`, d > 0);
-    if (pg.level > seen.level) toast(`Level up! Level ${pg.level} · ${pg.rank}`);
+    if (pg.level > seen.level){ toast(`Level up! Level ${pg.level} · ${pg.rank}`); if (window.FX) FX.confetti({ count: 200 }); }
     else toast(`${d > 0 ? "+" : ""}${d} XP${why ? " · " + why : ""}`);
   }
   function pop(text, good){
