@@ -31,7 +31,8 @@ def test_repo_rules_block_parses_with_valid_types():
                 "min_weighted_r", "require_stop", "max_liq_touch_5d_pct", "max_option_premium_pct",
                 "loss_cooldown_hours", "max_trades_per_day"}
     assert expected <= set(rules)
-    assert set(rules["max_leverage"]) == {"crypto", "precious metals", "equities"}
+    from tools import universe
+    assert set(rules["max_leverage"]) == set(universe.themes().values())   # every theme has a leverage cap
     for k, v in rules.items():
         vals = v.values() if isinstance(v, dict) else [v]
         assert all(x is None or isinstance(x, (int, float, bool)) for x in vals), k

@@ -9,9 +9,17 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 - BCH/USDT (Bitcoin Cash)
 - BTC/USDT (Bitcoin) (added: 2026-10-04)
 - GLD (SPDR Gold ETF) (added: 2026-10-04). Relationship to the XAU/USD position (instead of or alongside): **unknown**
+- ETH/USDT (Ethereum), SOL/USDT (Solana) (added: 2026-11-05)
+- MNQ (micro Nasdaq-100), MES (micro S&P 500), MGC (micro gold) (added: 2026-11-05)
+- XRP/USDT (XRP), MCL (micro WTI crude) (added: 2026-11-05)
+
+## Instrument types (added: 2026-11-05)
+- Crypto: **USDT perpetuals on OKX** (stated 2026-11-05: "perps on OKX"). Levels come from OKX spot; `crypto_feeds.py` perp_basis shows the perp-vs-spot gap and mark price.
+- Futures: **CME micros** (MNQ, MES, MGC, MCL) (stated 2026-11-05: "micros"). Position math reports whole contracts.
+- Other assets (XAU/USD, SI, SLV, GLD, MSFT): still **unknown**.
 
 ## Typical leverage
-- **unknown**. Not stated yet. Also unknown: equity, risk % per trade, exchange/broker, fees, margin mode (isolated or cross), instrument type per asset (spot, futures, ETF, CFD). Until these are known, sizing and leverage checks are skipped (AGENT.md F1).
+- **unknown**. Not stated yet. Also unknown: equity, risk % per trade, exchange/broker, fees, margin mode (isolated or cross), instrument type for the assets not listed under Instrument types. Until these are known, sizing and leverage checks are skipped (AGENT.md F1).
 - **Trades options:** yes (stated 2026-10-04). Which underlyings and strategies: **unknown**. (added: 2026-10-04)
 - Max leverage, risk limits, cooldowns: set them in the **Trading rules** block at the end of this file. They're checked on every plan.
 
@@ -68,7 +76,7 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 **Set by the agent on 2026-10-04 at the user's request** ("you set the rules as well"); the user has authorized the agent to adjust them when needed. Every change is noted in the change log below with its reason.
 ```json
 {
-  "max_leverage": {"crypto": 10, "precious metals": 7, "equities": 2},
+  "max_leverage": {"crypto": 10, "precious metals": 7, "equities": 2, "equity index futures": 10, "energy": 5},
   "max_risk_pct_per_trade": 1.0,
   "max_open_risk_pct": 5.0,
   "max_theme_gross_pct": 300,
@@ -82,7 +90,7 @@ Only preferences the user has stated directly. Do not infer. Fields marked **unk
 }
 ```
 Why these values (evidence from the tools, 2026-10-04):
-- **Leverage, crypto 10x:** `vol_check.py` puts BTC's 5-day ≤ 5% liquidation-touch leverage at 9.1x. BCH runs about 2× BTC's volatility, so `max_liq_touch_5d_pct` catches it at a lower leverage on its own. **Metals 7x:** silver's equivalent was 7.2x. **Equities 2x:** a standard margin account limit.
+- **Leverage, crypto 10x:** `vol_check.py` puts BTC's 5-day ≤ 5% liquidation-touch leverage at 9.1x. BCH runs about 2× BTC's volatility, so `max_liq_touch_5d_pct` catches it at a lower leverage on its own. **Metals 7x:** silver's equivalent was 7.2x. **Equities 2x:** a standard margin account limit. **Equity index futures 10x:** `vol_check.py` (2026-11-05) gives 15.6x for MNQ and 20.9x for MES at ≤ 5% 5-day liquidation-touch odds; 10x leaves room under the stricter one. **Energy 5x:** MCL's equivalent was 6.7x, set lower because crude gaps on EIA/OPEC news (CL=F had 51 daily moves > 4% in the year to 2026-11-05).
 - **Risk 1% per trade, 5% open:** the risk-and-sizing skill defaults. Correlated positions (ρ ≥ 0.7) count as one bet toward the 5%.
 - **Theme gross 300%:** allows leveraged positions but caps one theme at 3× equity, so a 10% theme-wide drop costs at most about 30% before stops.
 - **5 positions, 3 trades/day, 12h cooldown after a loss:** limits overtrading and revenge trading after a stop-out.
@@ -92,3 +100,4 @@ Why these values (evidence from the tools, 2026-10-04):
 
 Change log:
 - 2026-10-04: initial values set by the agent (user delegated).
+- 2026-11-05: added max_leverage "equity index futures": 10 and "energy": 5 for the new MNQ/MES and MCL themes (evidence above; vol_check runs 2026-11-05). Applied at the user's request.
