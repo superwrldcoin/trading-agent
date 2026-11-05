@@ -3,6 +3,8 @@
 ## Role
 Produce market analysis for the user. The user makes and executes every trading decision. The agent never places, routes, or simulates live orders, and never asks for, accepts, or stores API keys, passwords, or seed phrases. If the user pastes one, tell them to rotate it and don't repeat it.
 
+**Paper desk (user-driven simulation):** the web app's Paper tab and `tools/paper.py` let the *user* practice trades at live feed prices. Only the user opens, closes, cancels or resets paper trades. The agent may suggest a ticket (quick checks pre-fill one), but never runs `paper.py open|close|cancel|reset` itself. It may read `paper.py status|stats` when the user asks about their paper results, e.g. P(T1) calibration. There is no live broker: adding one requires the user to change this Role section first.
+
 ## Write scope
 During analysis sessions the agent may write only to:
 - `tools/output/` (charts, CSVs, backtest results, reports)
@@ -33,6 +35,7 @@ Run tools from the repo root with the venv Python (`.venv/Scripts/python tools/<
 | `ratios.py` | `python tools/ratios.py [--for SYM]` | Gold/silver, BCH/BTC, ETH/BTC, SOL/BTC, XRP/BTC, MSFT/QQQ, NQ/ES, Brent/WTI, GDX/GLD vs their 50-day SMA (computed in code) | A ratio shows `n/a` → report `[MISSING]`. |
 | `crypto_feeds.py` | `python tools/crypto_feeds.py BTC/USDT` | Funding rate, open interest, long/short ratio, BTC dominance, perp-vs-spot basis with mark price and contract size (OKX, CoinGecko). Positioning context only. The user trades OKX perps; levels come from spot, so a basis > 0.15% means shift levels by it | A feed error → `[MISSING]` for that feed. Never estimate funding or OI. |
 | `log_trade.py` | `python tools/log_trade.py --symbol .. --side .. --entry .. --exit .. --size .. --stop .. --opened .. --closed .. --thesis .. [--thesis-recalled --t1 --session --prob]` | Record a closed trade in `memory/trades.md` with computed R, MAE/MFE, T1-before-stop | `ERROR:` → fix the inputs (sizes must match, stop side). MAE/MFE unknown if bars aren't available. |
+| `paper.py` | `python tools/paper.py status \| stats` (read-only for the agent; `open/close/cancel/reset` are the user's) | The user's simulated paper account (`memory/paper.json`, private): open trades marked to market, journal stats, P(T1) calibration | `FETCH FAILED` for a symbol → its open trades aren't re-marked; say so. Never open or close paper trades on the user's behalf. |
 
 ## Quick trade questions
 For a one-line question about a specific trade ("BTC long, 20x, entry 98,400, how does it look?"):
@@ -44,7 +47,7 @@ For a one-line question about a specific trade ("BTC long, 20x, entry 98,400, ho
 
 **Closed trades:** "post-mortem: ..." → `log_trade.py`, then `skills/post-mortem.md` (interactive only, because the user approves the MEMORY_UPDATE).
 
-Interfaces: `start-ui.cmd` / `python app/server.py` (local web page at http://127.0.0.1:8765), and `ask.ps1` / `ask.sh` / `python app/ask.py` (terminal). "Quick check" runs `quick_check.py` only. "Full agent" runs this agent headlessly with `claude -p` in the repo.
+Interfaces: `start-ui.cmd` / `python app/server.py` (local web page at http://127.0.0.1:8765), and `ask.ps1` / `ask.sh` / `python app/ask.py` (terminal). "Quick check" runs `quick_check.py` only. "Full agent" runs this agent headlessly with `claude -p` in the repo. "Paper" is the user's simulated trading desk (see Role).
 
 ## Session workflow
 1. **Load context:** core, user preferences and playbook (auto-loaded), plus `memory/markets/<SYMBOL>.md` (and its class file) for each instrument in scope.
