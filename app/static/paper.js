@@ -18,13 +18,10 @@ const Paper = (() => {
   const num = v => { const s = String(v ?? "").replace(/[$,\s]/g, ""); return s === "" ? null : Number(s); };
   const visible = () => $("main").dataset.view === "paper" && !document.hidden;
 
-  // ---- view switching ----
+  // ---- view switching (called by showView in app.js; navigate with go("paper")) ----
   function setView(v){
-    $("main").dataset.view = v;
     $("#paperView").hidden = v !== "paper";
-    document.querySelectorAll(".appbar .seg-btn").forEach(b => b.classList.toggle("active",
-      (v === "paper" && b.id === "paperBtn") || (v === "analyze" && b.id === "analyzeBtn")));
-    if (v === "paper"){ refresh(); quote(); schedule(); window.scrollTo({ top: 0, behavior: animOn() ? "smooth" : "auto" }); }
+    if (v === "paper"){ refresh(); quote(); schedule(); }
     else clearInterval(timer);
   }
   function schedule(){ clearInterval(timer); timer = setInterval(() => { if (visible()){ refresh(); quote(); } }, REFRESH_MS); }
@@ -37,15 +34,19 @@ const Paper = (() => {
     const saved = localStorage.getItem("ta_paper_sym");
     if (saved && cfg.watchlist.includes(saved)) sel.value = saved;
     onSymbol(false);
-    // deep links: #paper opens the desk; #paper?symbol=BTC/USDT&side=long&stop=..&targets=a,b[&entry=..&leverage=..] pre-fills a ticket
-    const m = location.hash.match(/^#paper(?:\?(.*))?$/);
+    // deep links: #paper opens the desk (the router in app.js); #paper?symbol=BTC/USDT&side=long&stop=..&targets=a,b[&entry=..&leverage=..] pre-fills a ticket
+    const m = location.hash.match(/^#paper\?(.*)$/);
     if (m){
-      const q = new URLSearchParams(m[1] || "");
+      const q = new URLSearchParams(m[1]);
       if (q.get("symbol") && q.get("side") && q.get("stop") && q.get("targets"))
         prefill({ symbol: q.get("symbol").toUpperCase(), side: q.get("side"), stop: num(q.get("stop")),
           targets: q.get("targets").split(",").map(num).filter(x => x != null), entry: num(q.get("entry")), leverage: num(q.get("leverage")) });
-      else setView("paper");
     }
+  }
+  // the home page's tickers open the desk on a symbol
+  function openSymbol(sym){
+    go("paper");
+    if (cfg.watchlist.includes(sym) && $("#tSym").value !== sym){ $("#tSym").value = sym; onSymbol(); }
   }
   const theme = () => cfg.themes[$("#tSym").value];
   const levCap = () => ((cfg.rules || {}).max_leverage || {})[theme()];
@@ -257,7 +258,7 @@ const Paper = (() => {
   // ---- "Paper this setup" from a quick check ----
   let pendingPlan = null;
   function prefill(plan){
-    setView("paper");
+    go("paper");
     if (cfg.watchlist.includes(plan.symbol)){ $("#tSym").value = plan.symbol; onSymbol(); }
     setSide(plan.side);
     $("#tStop").value = plan.stop; $("#tTargets").value = plan.targets.join(", ");
@@ -276,7 +277,7 @@ const Paper = (() => {
   }
 
   // ---- wiring ----
-  $("#paperBtn").onclick = () => { closeDrawers(); setView("paper"); };
+  $("#paperBtn").onclick = () => { closeDrawers(); go("paper"); };
   document.querySelectorAll(".side-toggle .side").forEach(b => b.onclick = () => setSide(b.dataset.side));
   document.querySelectorAll("#tOrd .seg-btn").forEach(b => b.onclick = () => setOrd(b.dataset.v));
   document.querySelectorAll("#tSizeMode .seg-btn").forEach(b => b.onclick = () => setSizeMode(b.dataset.v));
@@ -288,11 +289,13 @@ const Paper = (() => {
   $("#planBtn").onclick = () => { if (Paper.plan) prefill(Paper.plan); };
   document.addEventListener("keydown", e => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "p" || e.key === "P")) setView("paper");
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "p" || e.key === "P")) go("paper");
   });
   document.addEventListener("visibilitychange", () => { if (visible()){ refresh(); quote(); } });
   setInterval(() => { if (updatedAt && visible() && !$("#pLive").classList.contains("off"))
     $("#pUpdated").textContent = `live · updated ${Math.round((Date.now() - updatedAt) / 1000)}s ago`; }, 1000);
   init();
-  return { setView, prefill, plan: null };
+  return { setView, prefill, openSymbol, plan: null };
 })();
+// A top-level const is not a window property; app.js looks the desk up as window.Paper.
+window.Paper = Paper;

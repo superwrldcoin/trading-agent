@@ -10,20 +10,71 @@
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <header class="appbar">
-  <div class="brand">
+  <div class="brand" role="link" tabindex="0" title="Home">
     <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 6-8 3 3"/></svg></span>
     <div><h1>Trading Agent</h1><p class="sub">Analysis only · you make every trading decision</p></div>
   </div>
   <nav class="seg" aria-label="Main">
-    <button class="seg-btn active" id="analyzeBtn" title="New analysis (/)">Analyze</button>
-    <button class="seg-btn" id="paperBtn" title="Paper trading desk (P)">Paper <span class="sim-dot" aria-hidden="true"></span></button>
-    <button class="seg-btn" id="historyBtn" title="Past runs (H)">History</button>
-    <button class="seg-btn" id="settingsBtn" title="Settings (,)">Settings</button>
+    <button class="seg-btn active" id="homeBtn" data-view="home" title="Home">Home</button>
+    <button class="seg-btn" id="analyzeBtn" data-view="analyze" title="New analysis (/)">Analyze</button>
+    <button class="seg-btn" id="paperBtn" data-view="paper" title="Paper trading desk (P)">Paper <span class="sim-dot" aria-hidden="true"></span></button>
+    <span class="seg-sep" aria-hidden="true"></span>
+    <button class="seg-btn icon-btn" id="historyBtn" data-drawer="history" title="Past runs (H)" aria-label="History">⟲</button>
+    <button class="seg-btn icon-btn" id="settingsBtn" data-drawer="settings" title="Settings (,)" aria-label="Settings">⚙</button>
   </nav>
   <span class="cli-pill" id="cliPill" hidden></span>
 </header>
 
-<main data-view="analyze">
+<main data-view="home">
+  <!-- Home: start screen. Tickers, modes and the player card read the same local APIs as the other views. -->
+  <section id="homeView" class="home" aria-label="Home">
+    <div class="h-hero">
+      <div class="h-hero-copy">
+        <span class="kicker"><i></i> Live prices · simulated trades</span>
+        <h2 class="h-hero-title">Ride the <span class="grad-text">setup.</span></h2>
+        <p class="h-hero-sub">Read any chart, plan the trade with real levels, then practice it on the paper desk. Your rules keep score.</p>
+        <div class="h-hero-cta">
+          <button class="play" id="hPlay">▶ Play</button>
+          <button class="secondary" id="hAnalyze">Analyze a setup</button>
+        </div>
+        <p class="h-hero-keys"><kbd>P</kbd> paper desk · <kbd>/</kbd> analyze · <kbd>H</kbd> history</p>
+      </div>
+      <div class="h-hero-art" aria-hidden="true">
+        <svg viewBox="0 0 360 220" class="h-hero-chart">
+          <defs><linearGradient id="hg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-opacity=".35"/><stop offset="1" stop-opacity="0"/></linearGradient></defs>
+          <rect class="zone-tgt" x="0" y="22" width="360" height="26"/><rect class="zone-risk" x="0" y="150" width="360" height="22"/>
+          <line class="lvl tgt" x1="0" x2="360" y1="35" y2="35"/><line class="lvl entry" x1="0" x2="360" y1="128" y2="128"/><line class="lvl stop" x1="0" x2="360" y1="161" y2="161"/>
+          <polygon class="area" points="0,220 0,150 30,140 55,152 80,131 105,138 130,120 150,129 175,104 200,112 225,86 250,95 275,66 300,72 325,44 360,38 360,220"/>
+          <polyline class="line" pathLength="100" points="0,150 30,140 55,152 80,131 105,138 130,120 150,129 175,104 200,112 225,86 250,95 275,66 300,72 325,44 360,38"/>
+          <circle class="rider" cx="360" cy="38" r="6"/>
+          <text x="6" y="31" class="tag tgt">T1</text><text x="6" y="124" class="tag entry">ENTRY</text><text x="6" y="182" class="tag stop">STOP</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="h-ticker" id="hTicker" aria-label="Watchlist prices"></div>
+
+    <div class="home-grid">
+      <section class="panel player" id="hPlayer" aria-label="Your progress"></section>
+      <section class="panel rules-card" id="hRules" aria-label="Your rules"></section>
+    </div>
+
+    <h3 class="sec-title">How it works</h3>
+    <ol class="steps-3">
+      <li><b>Read</b><span>Levels (PDH/PDL, PWH/PWL, monthly) and the EMA + VWAP conviction grade, on 4H closes.</span></li>
+      <li><b>Plan</b><span>Zone, structural stop and targets with R, liquidation and a check against your rules.</span></li>
+      <li><b>Practice</b><span>Open it on the paper desk at live prices, call your P(T1), and see if your calls hold up.</span></li>
+    </ol>
+
+    <h3 class="sec-title">Modes</h3>
+    <div class="modes">
+      <button class="mode" data-mode="quick"><span class="m-ico">⚡</span><b>Quick check</b><span>One line in, a full plan out. No AI, free, seconds.</span><em>Free</em></button>
+      <button class="mode" data-mode="agent"><span class="m-ico">✦</span><b>Full agent</b><span>Claude Code with every skill, the bear case and news.</span><em id="hAgentTag">Claude</em></button>
+      <button class="mode" data-mode="paper"><span class="m-ico">▶</span><b>Paper desk</b><span>Simulated trades at live prices, journal and calibration.</span><em>Live</em></button>
+      <div class="mode locked" aria-disabled="true"><span class="m-ico">★</span><b>Daily challenge</b><span>One symbol a day. Find a setup worth 2R+ and paper it.</span><em>Soon</em></div>
+    </div>
+  </section>
+
   <section class="panel composer" id="inputPanel">
     <div class="field">
       <textarea id="q" placeholder="BTC long, 20x, entry 98,400, how does it look?" aria-label="Your request"></textarea>
@@ -151,5 +202,6 @@
 <script src="/static/report.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/paper.js"></script>
+<script src="/static/home.js"></script>
 </body>
 </html>

@@ -24,7 +24,8 @@ from app.jobs import JobManager  # noqa: E402
 APP_DIR = Path(__file__).resolve().parent
 STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8",
           "/static/report.js": "application/javascript; charset=utf-8",
-          "/static/paper.js": "application/javascript; charset=utf-8"}
+          "/static/paper.js": "application/javascript; charset=utf-8",
+          "/static/home.js": "application/javascript; charset=utf-8"}
 JOBS = JobManager()
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")

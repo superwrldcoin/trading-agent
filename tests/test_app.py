@@ -185,7 +185,8 @@ def test_run_portfolio_empty(monkeypatch, tmp_path):
     assert res["ok"] and "No open positions" in res["markdown"]
 
 def test_static_and_config(srv):
-    for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent"), ("/static/report.js", b"const Report")):
+    for p, ct in (("/static/app.js", b"EventSource"), ("/static/app.css", b"--accent"), ("/static/report.js", b"const Report"),
+                  ("/static/home.js", b"window.Home = Home")):
         status, body = request(srv, "GET", p)
         assert status == 200 and ct in body
     assert request(srv, "GET", "/static/../server.py")[0] == 404
@@ -296,7 +297,9 @@ def test_paper_endpoints_use_a_private_store_and_need_the_header(srv, tmp_path, 
     assert request(srv, "POST", "/api/paper/nope", {}, OK)[0] == 404
     status, body = request(srv, "GET", "/api/paper/quote?symbol=btc/usdt")
     assert status == 200 and json.loads(body)["price"] == 100
-    assert request(srv, "GET", "/static/paper.js")[0] == 200
+    status, body = request(srv, "GET", "/static/paper.js")
+    # app.js switches views via window.Paper; a bare top-level const is invisible there (Analyze tab got stuck on Paper)
+    assert status == 200 and b"window.Paper = Paper" in body
     assert "MES" in json.loads(request(srv, "GET", "/api/config")[1])["contracts"]
 
 
