@@ -83,7 +83,14 @@
 <aside class="drawer" id="history" aria-hidden="true" aria-label="History">
   <div class="drawer-head"><h2>History</h2><button class="icon" data-close aria-label="Close">✕</button></div>
   <ul id="histList"></ul>
+  <div class="row"><button class="ghost" id="clearHist">Delete all history</button></div>
 </aside>
+
+<div class="notice" id="notice" hidden role="region" aria-label="Data notice">
+  <p>This app stores your requests and reports on this computer. Market data is fetched from third parties (OKX, Swissquote, CoinGecko, Deribit, Yahoo Finance, FRED), and Full agent runs send your request to Anthropic. <a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
+  <button id="noticeOk">Got it</button>
+</div>
+<footer class="foot"><a href="/privacy" target="_blank" rel="noopener">Privacy</a> · Analysis only, not financial advice.</footer>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/static/report.js"></script>

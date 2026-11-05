@@ -25,6 +25,10 @@ APP_DIR = Path(__file__).resolve().parent
 STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8",
           "/static/report.js": "application/javascript; charset=utf-8"}
 JOBS = JobManager()
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+       "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+_FILES: dict[str, tuple[bytes, str]] = {}
+_CONFIG: dict = {}
 
 
 def _read(rel: str) -> bytes:
@@ -32,6 +36,28 @@ def _read(rel: str) -> bytes:
     if APP_DIR not in p.parents:
         raise FileNotFoundError(rel)
     return p.read_bytes()
+
+
+def _cached(rel: str) -> tuple[bytes, str]:
+    """Static files are read once per mtime and served with an ETag so the browser can revalidate cheaply."""
+    p = APP_DIR / rel
+    mtime = p.stat().st_mtime_ns
+    hit = _FILES.get(rel)
+    if hit is None or hit[1].strip('"').split("-")[0] != str(mtime):
+        body = _read(rel)
+        hit = (body, f'"{mtime}-{len(body)}"')
+        _FILES[rel] = hit
+    return hit
+
+
+def _clear_cache() -> int:
+    d = ROOT / "tools" / "output" / "cache"
+    n = 0
+    for f in d.glob("*") if d.exists() else []:
+        if f.is_file():
+            f.unlink(missing_ok=True)
+            n += 1
+    return n
 
 
 HEADER = "X-Trading-Agent"
@@ -55,6 +81,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _static(self, rel: str, ctype: str) -> None:
+        body, etag = _cached(rel)
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if ctype.startswith("text/html"):
+            self.send_header("Content-Security-Policy", CSP)
         self.end_headers()
         self.wfile.write(body)
 
@@ -69,6 +116,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         i = 0
         try:
@@ -86,12 +134,15 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def _config(self) -> dict:
+        if _CONFIG:
+            return _CONFIG
         from tools import levels, rules_check
         cfg = {"watchlist": sorted(levels.WATCHLIST), "claude_cli": bool(agent.claude_path()), "rules": None}
         try:
             cfg["rules"] = rules_check.load_rules()
         except Exception:  # rules are informational in the UI
             pass
+        _CONFIG.update(cfg)
         return cfg
 
     def do_GET(self):
@@ -99,9 +150,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "bad host"})
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
-            return self._send(200, _read("index.html"), "text/html; charset=utf-8")
+            return self._static("index.html", "text/html; charset=utf-8")
         if path in STATIC:
-            return self._send(200, _read(path.lstrip("/")), STATIC[path])
+            return self._static(path.lstrip("/"), STATIC[path])
+        if path == "/privacy":
+            try:
+                body = (ROOT / "PRIVACY.md").read_bytes()
+            except OSError:
+                return self._json(404, {"error": "not found"})
+            return self._send(200, body, "text/plain; charset=utf-8")
         if path == "/api/health":
             return self._json(200, {"ok": True, "claude_cli": bool(agent.claude_path())})
         if path == "/api/config":
@@ -136,9 +193,13 @@ class Handler(BaseHTTPRequestHandler):
             text = str(payload.get("text", "")).strip()
         except (ValueError, AttributeError):
             return self._json(400, {"error": "invalid JSON"})
+        parts = self.path.strip("/").split("/")
+        if self.path == "/api/history/clear":
+            return self._json(200, {"deleted": JOBS.clear_history(), "cache": _clear_cache()})
+        if len(parts) == 4 and parts[:2] == ["api", "history"] and parts[3] == "delete":
+            return self._json(200, {"ok": JOBS.delete_item(parts[2])})
         if not text:
             return self._json(400, {"error": "empty request"})
-        parts = self.path.strip("/").split("/")
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "cancel":
             return self._json(200, {"ok": JOBS.cancel(parts[2])})
         num = lambda k: float(payload[k]) if payload.get(k) not in (None, "") else None

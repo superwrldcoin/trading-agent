@@ -216,6 +216,31 @@ def test_job_stream_and_history(srv, monkeypatch, tmp_path):
     assert request(srv, "GET", "/api/history/..%2f..")[0] == 404
 
 
+def test_history_delete_and_clear(srv, monkeypatch, tmp_path):
+    from app.jobs import JobManager
+    jm = JobManager(tmp_path)
+    monkeypatch.setattr(server, "JOBS", jm)
+    monkeypatch.setattr(agent, "run_quick", lambda text, e=None, r=None, progress=None:
+                        {"ok": True, "markdown": "M", "seconds": 0.1})
+    ids = []
+    for t in ("a", "b"):
+        jid = json.loads(request(srv, "POST", "/api/run", {"kind": "quick", "text": t}, OK)[1])["id"]
+        request(srv, "GET", f"/api/jobs/{jid}/events")
+        ids.append(jid)
+    assert request(srv, "POST", f"/api/history/{ids[0]}/delete", {"x": 1}, OK)[0] == 200
+    assert request(srv, "GET", f"/api/history/{ids[0]}")[0] == 404
+    assert request(srv, "POST", "/api/history/clear", {"x": 1}, {"X-Trading-Agent": "1"})[0] == 403
+    status, body = request(srv, "POST", "/api/history/clear", {"x": 1}, OK)
+    assert status == 200 and "deleted" in json.loads(body)
+    assert json.loads(request(srv, "GET", "/api/history")[1])["items"] == []
+    assert not list(tmp_path.glob("*.json")) and not list(tmp_path.glob("*.meta"))
+
+
+def test_privacy_route(srv):
+    status, body = request(srv, "GET", "/privacy")
+    assert status == 200 and b"Privacy" in body
+
+
 def test_run_guards_and_cancel(srv, monkeypatch, tmp_path):
     from app.jobs import JobManager
     monkeypatch.setattr(server, "JOBS", JobManager(tmp_path))

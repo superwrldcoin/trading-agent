@@ -79,6 +79,11 @@ All public, read-only, keyless: OKX market data, yfinance, and Swissquote's publ
 spot cross-check). Binance and Bybit are blocked from the author's location. `tools/verify.py`
 rebuilds 4H bars from 15M/5M data to check the pipeline.
 
+## Privacy
+
+Everything stays on your machine (localhost only). Third-party feeds see your IP and the symbols
+you query. See [PRIVACY.md](PRIVACY.md); the UI has a "Delete all history" button and per-run delete.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

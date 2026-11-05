@@ -89,8 +89,12 @@ def run_portfolio() -> dict:
     data = positions.load()
     try:
         syms = sorted({p["symbol"] for p in data["positions"]})
-        prices = {s: float(fetch_prices.get_ohlcv(s, "15M", bars=50)["close"].iloc[-1]) for s in syms}
-        daily = {s: fetch_prices.get_ohlcv(s, "1D", bars=400) for s in syms}
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            f15 = {s: ex.submit(fetch_prices.get_ohlcv, s, "15M", 50) for s in syms}
+            f1d = {s: ex.submit(fetch_prices.get_ohlcv, s, "1D", 400) for s in syms}
+            prices = {s: float(f.result()["close"].iloc[-1]) for s, f in f15.items()}
+            daily = {s: f.result() for s, f in f1d.items()}
         md = portfolio.render(portfolio.analyze(data, prices, daily, pd.Timestamp.now(tz="UTC")))
         ok = True
     except fetch_prices.FetchError as exc:
