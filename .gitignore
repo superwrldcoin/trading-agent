@@ -12,3 +12,5 @@ tools/output/*
 memory/trades.md
 memory/sessions.md
 memory/positions.json
+memory/paper.json
+memory/paper.tmp

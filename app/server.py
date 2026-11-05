@@ -23,7 +23,8 @@ from app.jobs import JobManager  # noqa: E402
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "application/javascript; charset=utf-8",
-          "/static/report.js": "application/javascript; charset=utf-8"}
+          "/static/report.js": "application/javascript; charset=utf-8",
+          "/static/paper.js": "application/javascript; charset=utf-8"}
 JOBS = JobManager()
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -136,14 +137,60 @@ class Handler(BaseHTTPRequestHandler):
     def _config(self) -> dict:
         if _CONFIG:
             return _CONFIG
-        from tools import levels, rules_check
-        cfg = {"watchlist": sorted(levels.WATCHLIST), "claude_cli": bool(agent.claude_path()), "rules": None}
+        from tools import levels, rules_check, universe
+        cfg = {"watchlist": sorted(levels.WATCHLIST), "claude_cli": bool(agent.claude_path()), "rules": None,
+               "themes": universe.themes(),
+               "contracts": {k: universe.contract(k) for k in levels.WATCHLIST if universe.contract(k)}}
         try:
             cfg["rules"] = rules_check.load_rules()
         except Exception:  # rules are informational in the UI
             pass
         _CONFIG.update(cfg)
         return cfg
+
+    # ---- paper desk (simulated trades only: tools/paper.py; the user opens every trade) ----
+    def _paper(self, fn) -> None:
+        from tools import fetch_prices, paper
+        try:
+            return self._json(200, fn(paper))
+        except paper.PaperError as exc:
+            return self._json(400, {"error": str(exc)})
+        except fetch_prices.FetchError as exc:
+            return self._json(502, {"error": f"FETCH FAILED: {exc}"})
+
+    def _paper_post(self, action: str, payload: dict) -> None:
+        if action not in ("preview", "open", "close", "cancel", "reset"):
+            return self._json(404, {"error": "not found"})
+        if not isinstance(payload, dict):
+            return self._json(400, {"error": "invalid JSON"})
+        tid = str(payload.get("id", ""))
+
+        def ticket():
+            num = lambda v: None if v in (None, "") else float(v)
+            try:
+                return {"symbol": str(payload.get("symbol", "")).upper(), "side": payload.get("side"),
+                        "stop": num(payload.get("stop")), "targets": [float(x) for x in payload.get("targets") or []],
+                        "risk_pct": num(payload.get("risk_pct")), "size": num(payload.get("size")),
+                        "contracts": num(payload.get("contracts")), "leverage": num(payload.get("leverage")) or 1.0,
+                        "limit": num(payload.get("limit")), "p_t1": num(payload.get("p_t1")),
+                        "note": str(payload.get("note") or ""), "source": str(payload.get("source") or "ticket")}
+            except (TypeError, ValueError):
+                from tools.paper import PaperError
+                raise PaperError("ticket fields must be numbers")
+
+        if action == "preview":
+            return self._paper(lambda p: p.api_preview(ticket()))
+        if action == "open":
+            return self._paper(lambda p: p.api_open(ticket()))
+        if action == "close":
+            return self._paper(lambda p: p.api_close(tid))
+        if action == "cancel":
+            return self._paper(lambda p: p.api_cancel(tid))
+        try:
+            equity = float(payload.get("equity"))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "equity must be a number"})
+        return self._paper(lambda p: p.api_reset(equity))
 
     def do_GET(self):
         if not self._host_ok():
@@ -165,6 +212,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, self._config())
         if path == "/api/history":
             return self._json(200, {"items": JOBS.history()})
+        if path == "/api/paper":
+            return self._paper(lambda p: p.api_status())
+        if path == "/api/paper/quote":
+            from urllib.parse import parse_qs
+            sym = (parse_qs(self.path.partition("?")[2]).get("symbol") or [""])[0].upper()
+            return self._paper(lambda p: p.quote(sym))
         if path.startswith("/api/history/"):
             item = JOBS.history_item(path.rsplit("/", 1)[1])
             return self._json(200, item) if item else self._json(404, {"error": "not found"})
@@ -198,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"deleted": JOBS.clear_history(), "cache": _clear_cache()})
         if len(parts) == 4 and parts[:2] == ["api", "history"] and parts[3] == "delete":
             return self._json(200, {"ok": JOBS.delete_item(parts[2])})
+        if len(parts) == 3 and parts[:2] == ["api", "paper"]:
+            return self._paper_post(parts[2], payload)
         if not text:
             return self._json(400, {"error": "empty request"})
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "cancel":

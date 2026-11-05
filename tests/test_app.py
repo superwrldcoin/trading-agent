@@ -255,3 +255,54 @@ def test_run_guards_and_cancel(srv, monkeypatch, tmp_path):
     assert b'"cancelled"' in body and b'"done"' not in body
     release.set()
     assert request(srv, "GET", "/api/jobs/nope/events")[0] == 404
+
+
+def test_paper_endpoints_use_a_private_store_and_need_the_header(srv, tmp_path, monkeypatch):
+    import pandas as pd
+    from tools import paper
+    store = tmp_path / "paper.json"
+    idx = pd.date_range("2026-11-05 09:00", periods=4, freq="15min", tz="UTC")
+    frame = pd.DataFrame({"open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "volume": 1.0}, index=idx)
+
+    class B(paper.Broker):
+        def bars(self, symbol, bars=700):
+            return frame
+    for name in ("api_status", "api_preview", "api_open", "api_close", "api_cancel", "api_reset"):
+        fn = getattr(paper, name)
+        if name == "api_status":
+            monkeypatch.setattr(paper, name, lambda f=fn: f(store, B()))
+        elif name in ("api_preview", "api_open", "api_close"):
+            monkeypatch.setattr(paper, name, lambda a, f=fn: f(a, store, B()))
+        else:
+            monkeypatch.setattr(paper, name, lambda a, f=fn: f(a, store))
+    monkeypatch.setattr(paper, "quote", lambda sym, broker=None, f=paper.quote: f(sym, B()))
+
+    ticket = {"symbol": "btc/usdt", "side": "long", "stop": "95", "targets": ["110"], "risk_pct": "1", "leverage": "2"}
+    assert request(srv, "POST", "/api/paper/open", ticket, {"Content-Type": "application/json"})[0] == 403
+    status, body = request(srv, "POST", "/api/paper/preview", ticket, OK)
+    assert status == 200 and json.loads(body)["preview"]["weighted_R"] == pytest.approx(2, abs=0.05)
+    status, body = request(srv, "POST", "/api/paper/open", ticket, OK)
+    t = json.loads(body)
+    assert status == 200 and t["id"] == "PT-001" and t["status"] == "open"
+    status, body = request(srv, "GET", "/api/paper")
+    snap = json.loads(body)
+    assert status == 200 and snap["account"]["start_equity"] == 10_000 and snap["trades"][0]["mark"] == 100
+    status, body = request(srv, "POST", "/api/paper/close", {"id": "PT-001"}, OK)
+    assert status == 200 and json.loads(body)["status"] == "closed"
+    assert request(srv, "POST", "/api/paper/close", {"id": "PT-001"}, OK)[0] == 400       # already closed
+    assert request(srv, "POST", "/api/paper/open", dict(ticket, stop="abc"), OK)[0] == 400
+    assert request(srv, "POST", "/api/paper/reset", {"equity": "x"}, OK)[0] == 400
+    assert json.loads(request(srv, "POST", "/api/paper/reset", {"equity": 5000}, OK)[1])["start_equity"] == 5000
+    assert request(srv, "POST", "/api/paper/nope", {}, OK)[0] == 404
+    status, body = request(srv, "GET", "/api/paper/quote?symbol=btc/usdt")
+    assert status == 200 and json.loads(body)["price"] == 100
+    assert request(srv, "GET", "/static/paper.js")[0] == 200
+    assert "MES" in json.loads(request(srv, "GET", "/api/config")[1])["contracts"]
+
+
+def test_quick_result_carries_a_paper_plan():
+    res = {"symbol": "BTC/USDT", "side": "long", "entry": 100.0, "stop": 95.0,
+           "targets": [{"price": 105.0, "source": "PDH"}, {"price": 110.0, "source": "PWH"}], "request": {"leverage": 5.0}}
+    assert agent.paper_plan(res) == {"symbol": "BTC/USDT", "side": "long", "entry": 100.0, "stop": 95.0,
+                                     "targets": [105.0, 110.0], "leverage": 5.0}
+    assert agent.paper_plan(dict(res, side=None)) is None

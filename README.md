@@ -38,6 +38,19 @@ The **full agent** runs the quick check, then applies the skills, adds the event
 The full agent needs the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) logged in on the machine.
 Run `claude` once inside this folder and accept the trust prompt. No API key is stored.
 
+## Paper desk (simulated trading)
+
+The **Paper** tab (or `P`, or http://127.0.0.1:8765/#paper) is a practice account at live feed prices: a ticket
+with live quote, side toggle, market/limit, risk-% / units / contracts sizing, leverage against your cap, and a
+`P(T1 before stop)` slider. The preview shows size, risk, liquidation, weighted R, a stop → targets ladder and your
+own trading rules (breaks are flagged, and the trade asks you to confirm). Open trades mark to market every 15 s; stops,
+targets (scale-out 40/40/20) and liquidation are simulated from 15M bars, stop-first when one bar touches both. The
+journal shows the equity curve, win rate, R, and your P(T1) calibration. A quick check with a stop and targets
+gets a **Paper this setup** button that fills the ticket; you still open it yourself.
+
+Simulated only: no real orders, exchange keys or wallets. Data lives in `memory/paper.json` (private, gitignored).
+CLI: `python tools/paper.py status | open .. | close PT-001 | cancel PT-002 | reset --equity 10000 | stats`.
+
 ## Everyday commands
 
 ```powershell

@@ -16,13 +16,14 @@
   </div>
   <nav class="seg" aria-label="Main">
     <button class="seg-btn active" id="analyzeBtn" title="New analysis (/)">Analyze</button>
+    <button class="seg-btn" id="paperBtn" title="Paper trading desk (P)">Paper <span class="sim-dot" aria-hidden="true"></span></button>
     <button class="seg-btn" id="historyBtn" title="Past runs (H)">History</button>
     <button class="seg-btn" id="settingsBtn" title="Settings (,)">Settings</button>
   </nav>
   <span class="cli-pill" id="cliPill" hidden></span>
 </header>
 
-<main>
+<main data-view="analyze">
   <section class="panel composer" id="inputPanel">
     <div class="field">
       <textarea id="q" placeholder="BTC long, 20x, entry 98,400, how does it look?" aria-label="Your request"></textarea>
@@ -56,7 +57,61 @@
   </section>
 
   <section id="results" hidden>
+    <div class="plan-bar" id="planBar" hidden>
+      <span id="planText"></span>
+      <button id="planBtn" title="Fill the paper ticket with this setup (you still confirm)">Paper this setup →</button>
+    </div>
     <div id="out"></div>
+  </section>
+
+  <!-- Paper desk: simulated trades at live feed prices. You open every trade; the agent only pre-fills. -->
+  <section id="paperView" class="paper" hidden aria-label="Paper trading desk">
+    <div class="paper-head">
+      <div><h2>Paper desk <span class="badge-sim">SIMULATED</span></h2>
+        <p class="sub">Live prices from the same feeds as the analysis. No real orders, keys or wallets.</p></div>
+      <span class="live" id="pLive"><i></i><span id="pUpdated">connecting…</span></span>
+    </div>
+    <div class="tiles" id="pTiles"></div>
+
+    <div class="paper-grid">
+      <section class="panel ticket" id="ticket">
+        <div class="t-head"><h3>Ticket</h3><select id="tSym" aria-label="Symbol"></select></div>
+        <div class="quote" id="tQuote"><b id="tPx">—</b><small id="tChg"></small><small class="src" id="tSrc"></small></div>
+        <div class="side-toggle" role="radiogroup" aria-label="Side">
+          <button type="button" class="side long active" data-side="long" role="radio" aria-checked="true">▲ Long</button>
+          <button type="button" class="side short" data-side="short" role="radio" aria-checked="false">▼ Short</button>
+        </div>
+        <div class="seg sm" id="tOrd"><button type="button" class="seg-btn active" data-v="market">Market</button><button type="button" class="seg-btn" data-v="limit">Limit</button></div>
+        <div class="t-fields">
+          <label id="tLimitWrap" hidden>Limit <input id="tLimit" inputmode="decimal"></label>
+          <label>Stop <input id="tStop" inputmode="decimal" placeholder="required"></label>
+          <label>Targets <input id="tTargets" placeholder="T1, T2, T3"></label>
+          <div class="seg sm" id="tSizeMode"><button type="button" class="seg-btn active" data-v="risk">Risk %</button><button type="button" class="seg-btn" data-v="size">Units</button><button type="button" class="seg-btn" data-v="contracts" hidden>Contracts</button></div>
+          <label><span id="tSizeLbl">Risk %</span> <input id="tSize" inputmode="decimal" value="1"></label>
+          <div class="range-row"><label for="tLev">Leverage</label><output id="tLevOut" for="tLev">1x</output></div>
+          <input type="range" class="range" id="tLev" min="1" max="50" value="1">
+          <div class="range-row"><label for="tP">P(T1 before stop)</label><output id="tPOut" for="tP">50%</output></div>
+          <input type="range" class="range" id="tP" min="5" max="95" step="5" value="50">
+          <label>Note <input id="tNote" maxlength="280" placeholder="why this trade?"></label>
+        </div>
+        <div class="preview" id="tPreview" aria-live="polite"></div>
+        <button id="tSubmit" class="go long">Open paper long</button>
+      </section>
+
+      <section class="panel positions">
+        <div class="t-head"><h3>Open &amp; pending</h3><small id="pCount"></small></div>
+        <div id="pOpen"></div>
+      </section>
+    </div>
+
+    <section class="panel journal">
+      <div class="t-head"><h3>Journal</h3><button class="ghost" id="pReset">Reset account</button></div>
+      <div class="journal-grid">
+        <div class="curve-wrap"><h4>Equity curve</h4><div id="pCurve"></div></div>
+        <div><h4>Coaching</h4><ul class="insights" id="pInsights"></ul><h4>P(T1) calibration <small>called vs actual</small></h4><div id="pCalib"></div></div>
+      </div>
+      <div id="pClosed"></div>
+    </section>
   </section>
 </main>
 
@@ -95,5 +150,6 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/static/report.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/paper.js"></script>
 </body>
 </html>
