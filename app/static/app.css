@@ -403,6 +403,21 @@ body.busy button:disabled { cursor:progress; }
   .secnav { top:104px; }
 }
 
+/* ---------- phone: bottom tab bar, touch targets, safe areas ---------- */
+@media (max-width: 640px) {
+  .appbar { padding:calc(8px + env(safe-area-inset-top)) 12px 8px; }
+  .appbar .sub { display:none; }
+  .appbar nav.seg { position:fixed; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom)); z-index:30; display:flex;
+    justify-content:space-around; padding:4px; border-radius:16px; background:var(--panel-solid); box-shadow:0 8px 30px -8px rgba(0,0,0,.6); }
+  .appbar nav.seg .seg-btn { flex:1; min-height:44px; padding:8px 4px; }
+  .appbar nav.seg .seg-sep { display:none; }
+  main { padding-bottom:calc(96px + env(safe-area-inset-bottom)); }
+  input, select, textarea { font-size:16px; }   /* stops iOS zooming into fields */
+  button, .chip { min-height:40px; }
+  .modes { grid-template-columns:1fr; }
+}
+@media (display-mode: standalone) { body { overscroll-behavior-y:none; } }
+
 /* ---------- motion ---------- */
 @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 @keyframes slideIn { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:none; } }

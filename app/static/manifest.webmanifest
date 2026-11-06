@@ -1,0 +1,15 @@
+{
+  "name": "Trading Agent",
+  "short_name": "TradeAgent",
+  "description": "Analysis-only trading research and paper desk. You make every trading decision.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "icons": [
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "/static/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
+  ]
+}
