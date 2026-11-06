@@ -38,6 +38,21 @@ The **full agent** runs the quick check, then applies the skills, adds the event
 The full agent needs the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) logged in on the machine.
 Run `claude` once inside this folder and accept the trust prompt. No API key is stored.
 
+## On your phone (installable app)
+
+The web page is a PWA: manifest, service worker (app shell only; `/api/*` is never cached) and a bottom tab bar on phones.
+
+```bash
+python app/server.py --remote          # optional: TA_TOKEN=<16+ chars> to choose your own token
+```
+
+It prints a link like `http://192.168.x.x:8765/?token=...`. Open it on the phone (same Wi-Fi); the token is exchanged
+for an HttpOnly cookie. Every request except the icons/manifest needs the token. Plain HTTP on a LAN is readable by
+others on that network, and browsers only offer "Add to Home Screen" / the service worker over HTTPS (or localhost),
+so for real use put HTTPS in front, e.g. `tailscale serve 8765` or a Cloudflare tunnel, and open the same `?token=` link
+on that address. Without `--remote` the server stays on 127.0.0.1 as before. The full agent still runs on the host
+machine (needs Claude Code there); your data stays in `memory/app.db` on that machine.
+
 ## Paper desk (simulated trading)
 
 The **Paper** tab (or `P`, or http://127.0.0.1:8765/#paper) is a practice account at live feed prices: a ticket

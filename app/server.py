@@ -8,7 +8,11 @@ and never answer CORS preflights, so other websites in your browser can't trigge
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
+import os
+import secrets
+import socket
 import sys
 import threading
 import webbrowser
@@ -26,7 +30,12 @@ STATIC = {"/static/app.css": "text/css; charset=utf-8", "/static/app.js": "appli
           "/static/report.js": "application/javascript; charset=utf-8",
           "/static/paper.js": "application/javascript; charset=utf-8",
           "/static/home.js": "application/javascript; charset=utf-8",
-          "/static/fx.js": "application/javascript; charset=utf-8"}
+          "/static/fx.js": "application/javascript; charset=utf-8",
+          "/static/pwa.js": "application/javascript; charset=utf-8",
+          "/static/icon.svg": "image/svg+xml", "/static/icon-maskable.svg": "image/svg+xml"}
+# Served from the root so the service worker's scope covers the whole app: URL path -> file under app/static/
+ROOT_FILES = {"/sw.js": ("static/sw.js", "application/javascript; charset=utf-8"),
+              "/manifest.webmanifest": ("static/manifest.webmanifest", "application/manifest+json")}
 JOBS = JobManager()
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -63,6 +72,9 @@ def _clear_cache() -> int:
     return n
 
 
+TOKEN: str | None = None      # set by --remote: every request except the PWA icons/manifest needs it
+COOKIE = "ta_token"
+OPEN_PATHS = {"/manifest.webmanifest", "/static/icon.svg", "/static/icon-maskable.svg"}
 HEADER = "X-Trading-Agent"
 MAX_BODY = 10_000
 MAX_IMPORT = 20_000_000      # a backup file being restored (Settings → Import)
@@ -113,7 +125,32 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
 
     def _host_ok(self) -> bool:
+        if TOKEN:       # remote mode: the Host is whatever the phone typed; the token is the gate
+            return bool(self.headers.get("Host"))
         return self.headers.get("Host", "") in self._allowed_hosts()
+
+    def _token_ok(self) -> bool:
+        if not TOKEN:
+            return True
+        cookies = dict(c.strip().partition("=")[::2] for c in self.headers.get("Cookie", "").split(";") if "=" in c)
+        given = cookies.get(COOKIE, "") or self.headers.get("Authorization", "").removeprefix("Bearer ")
+        return hmac.compare_digest(given.encode(), TOKEN.encode())
+
+    def _login(self, path: str, query: str) -> bool:
+        """GET /?token=... sets the session cookie and redirects to a clean URL. Returns True if it answered."""
+        from urllib.parse import parse_qs
+        given = (parse_qs(query).get("token") or [""])[0]
+        if not TOKEN or not given:
+            return False
+        if not hmac.compare_digest(given.encode(), TOKEN.encode()):
+            self._json(403, {"error": "bad token"})
+            return True
+        self.send_response(302)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie", f"{COOKIE}={TOKEN}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
 
     def _sse(self, job) -> None:
         self.send_response(200)
@@ -198,11 +235,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._host_ok():
             return self._json(403, {"error": "bad host"})
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
+        if self._login(path, query):
+            return
+        if path not in OPEN_PATHS and not self._token_ok():
+            return self._json(401, {"error": "access token required: open the URL printed by --remote"})
         if path in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")
         if path in STATIC:
             return self._static(path.lstrip("/"), STATIC[path])
+        if path in ROOT_FILES:
+            return self._static(*ROOT_FILES[path])
         if path == "/privacy":
             try:
                 body = (ROOT / "PRIVACY.md").read_bytes()
@@ -253,8 +296,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             return self._json(403, {"error": "bad host"})
+        if not self._token_ok():
+            return self._json(401, {"error": "access token required"})
         origin = self.headers.get("Origin")
-        if origin and origin.replace("http://", "") not in self._allowed_hosts():
+        allowed = {self.headers.get("Host", "")} if TOKEN else self._allowed_hosts()
+        if origin and origin.split("://", 1)[-1] not in allowed:
             return self._json(403, {"error": "bad origin"})
         if self.headers.get(HEADER) != "1" or "application/json" not in self.headers.get("Content-Type", ""):
             return self._json(403, {"error": f"missing {HEADER} header or JSON body"})
@@ -317,18 +363,40 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "not found"})
 
 
-def make_server(port: int) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+def make_server(port: int, host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    return ThreadingHTTPServer((host, port), Handler)
+
+
+def _lan_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+            sk.connect(("10.255.255.255", 1))      # no packet is sent; picks the outgoing interface
+            return sk.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
 
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Local web interface for the trading agent.")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--remote", action="store_true",
+                    help="listen on all interfaces for a phone/tablet; requires an access token (TA_TOKEN or generated)")
     a = ap.parse_args(argv)
-    srv = make_server(a.port)
+    global TOKEN
+    if a.remote:
+        TOKEN = os.environ.get("TA_TOKEN") or secrets.token_urlsafe(24)
+        if len(TOKEN) < 16:
+            print("TA_TOKEN must be at least 16 characters.")
+            return 2
+    srv = make_server(a.port, "0.0.0.0" if a.remote else "127.0.0.1")
     url = f"http://127.0.0.1:{a.port}"
     print(f"Trading agent interface: {url}  (Ctrl+C to stop)")
+    if a.remote:
+        print(f"Phone (same network): http://{_lan_ip()}:{a.port}/?token={TOKEN}")
+        print("Plain HTTP: anyone on this network can read it. For install-to-home-screen and safe use away from home,"
+              " put HTTPS in front (e.g. `tailscale serve` or a Cloudflare tunnel) and open the same ?token= link.")
+        a.no_browser = True
     if not a.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

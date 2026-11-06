@@ -190,6 +190,11 @@ def test_static_and_config(srv):
         status, body = request(srv, "GET", p)
         assert status == 200 and ct in body
     assert request(srv, "GET", "/static/../server.py")[0] == 404
+    status, body = request(srv, "GET", "/manifest.webmanifest")
+    assert status == 200 and json.loads(body)["display"] == "standalone"
+    status, body = request(srv, "GET", "/sw.js")
+    assert status == 200 and b"/api/" in body
+    assert request(srv, "GET", "/static/pwa.js")[0] == 200 and request(srv, "GET", "/static/icon.svg")[0] == 200
     status, body = request(srv, "GET", "/api/config")
     assert status == 200 and "watchlist" in json.loads(body)
 
@@ -329,3 +334,24 @@ def test_settings_rules_switch_export_import(srv):
     status, body = request(srv, "POST", "/api/import", {"data": dump}, OK)
     assert status == 200 and json.loads(body)["docs"] == ["paper"] and store.get_doc("paper") == {"next_id": 7}
     assert request(srv, "POST", "/api/import", {"data": {"format": "other"}}, OK)[0] == 400
+
+
+def test_remote_token_gate(srv, monkeypatch):
+    monkeypatch.setattr(server, "TOKEN", "t" * 24)
+    tok = "t" * 24
+    assert request(srv, "GET", "/api/health")[0] == 401
+    assert request(srv, "GET", "/")[0] == 401
+    assert request(srv, "GET", "/manifest.webmanifest")[0] == 200       # install metadata stays open
+    assert request(srv, "GET", "/?token=wrong")[0] == 403
+    c = http.client.HTTPConnection("127.0.0.1", srv, timeout=5)
+    c.request("GET", f"/?token={tok}", headers={"Host": "phone.lan:1"})
+    r = c.getresponse()
+    r.read()
+    cookie = r.getheader("Set-Cookie")
+    assert r.status == 302 and "HttpOnly" in cookie and "SameSite=Strict" in cookie
+    c.close()
+    sess = {"Cookie": f"ta_token={tok}", "Host": "phone.lan:1"}
+    assert request(srv, "GET", "/api/health", None, sess)[0] == 200
+    assert request(srv, "POST", "/api/quick", {"text": "BTC long"}, dict(OK, **sess))[0] == 200
+    assert request(srv, "POST", "/api/quick", {"text": "x"}, dict(OK, **sess, Origin="http://evil.example"))[0] == 403
+    assert request(srv, "POST", "/api/quick", {"text": "x"}, dict(OK, Host="phone.lan:1"))[0] == 401
